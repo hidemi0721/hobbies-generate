@@ -268,21 +268,21 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
             onClick={() => switchMode("dynamic")}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold tracking-wider border transition-all ${
               dna.mode === "dynamic"
-                ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40"
+                ? "bg-orange-500 border-orange-400 text-white shadow-lg shadow-orange-900/40"
                 : "bg-transparent border-gray-300 dark:border-white/10 text-gray-400 dark:text-white/30 hover:border-gray-400 dark:hover:border-white/20"
             }`}
           >
             動 Dynamic
           </button>
           <div className="relative w-14 h-7 shrink-0" onClick={() => switchMode(dna.mode === "dynamic" ? "static" : "dynamic")}>
-            <div className={`absolute inset-0 rounded-full transition-colors cursor-pointer ${dna.mode === "dynamic" ? "bg-red-600" : "bg-blue-600"}`} />
+            <div className={`absolute inset-0 rounded-full transition-colors cursor-pointer ${dna.mode === "dynamic" ? "bg-orange-500" : "bg-cyan-500"}`} />
             <div className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all cursor-pointer ${dna.mode === "dynamic" ? "left-1" : "left-8"}`} />
           </div>
           <button
             onClick={() => switchMode("static")}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold tracking-wider border transition-all ${
               dna.mode === "static"
-                ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/40"
+                ? "bg-cyan-500 border-cyan-400 text-white shadow-lg shadow-cyan-900/40"
                 : "bg-transparent border-gray-300 dark:border-white/10 text-gray-400 dark:text-white/30 hover:border-gray-400 dark:hover:border-white/20"
             }`}
           >
@@ -327,7 +327,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
       <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] p-3 sm:p-4">
         <div className="flex items-center gap-2 mb-2.5">
           <span className="text-[10px] tracking-[0.2em] text-gray-400 dark:text-white/25 uppercase">Mode Priority</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${dna.mode === "dynamic" ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400" : "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${dna.mode === "dynamic" ? "bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400" : "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400"}`}>
             {dna.mode === "dynamic" ? "動" : "静"}
           </span>
           <span className="text-[10px] text-gray-300 dark:text-white/15 ml-auto">モード別に独立保存</span>
@@ -340,8 +340,8 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
                 className={`px-2.5 py-1 rounded-lg text-xs border transition-all select-none ${
                   tag.selected
                     ? dna.mode === "dynamic"
-                      ? "bg-red-600 border-red-500 text-white shadow-sm"
-                      : "bg-blue-600 border-blue-500 text-white shadow-sm"
+                      ? "bg-orange-500 border-orange-400 text-white shadow-sm"
+                      : "bg-cyan-500 border-cyan-400 text-white shadow-sm"
                     : "bg-gray-100 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/40 hover:border-gray-300 dark:hover:border-white/15 hover:text-gray-700 dark:hover:text-white/70"
                 }`}
               >{tag.text}</button>
@@ -358,7 +358,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
             onChange={e => setPriorityInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && addPriority()}
             placeholder="+ add priority tag..."
-            className="flex-1 bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/15 focus:outline-none focus:border-red-500 dark:focus:border-blue-500"
+            className="flex-1 bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/15 focus:outline-none focus:border-orange-500 dark:focus:border-cyan-500"
           />
           <button
             onClick={addPriority}
@@ -385,7 +385,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
                 className="w-20 bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-sm text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/20 focus:outline-none focus:border-indigo-500 tabular-nums"
               />
               {dna.bpm && (
-                <span className={`text-xs font-bold ${dna.mode === "dynamic" ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>{dna.bpm} BPM</span>
+                <span className={`text-xs font-bold ${dna.mode === "dynamic" ? "text-orange-600 dark:text-orange-400" : "text-cyan-600 dark:text-cyan-400"}`}>{dna.bpm} BPM</span>
               )}
             </div>
           )}
@@ -399,8 +399,8 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all select-none ${
                     tag.selected
                       ? dna.mode === "dynamic"
-                        ? "bg-red-600 border-red-500 text-white shadow-sm"
-                        : "bg-blue-600 border-blue-500 text-white shadow-sm"
+                        ? "bg-orange-500 border-orange-400 text-white shadow-sm"
+                        : "bg-cyan-500 border-cyan-400 text-white shadow-sm"
                       : "bg-gray-100 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/40 hover:border-gray-300 dark:hover:border-white/15 hover:text-gray-700 dark:hover:text-white/70"
                   }`}
                 >{tag.text}</button>
@@ -433,17 +433,17 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
       {/* ── プロンプト出力 ── */}
       <div className={`rounded-xl border p-3 sm:p-4 ${
         dna.mode === "dynamic"
-          ? "border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20"
-          : "border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/20"
+          ? "border-orange-200 dark:border-orange-900/50 bg-orange-50 dark:bg-orange-950/20"
+          : "border-cyan-200 dark:border-cyan-900/50 bg-cyan-50 dark:bg-cyan-950/20"
       }`}>
         <div className="flex items-center justify-between mb-2.5">
-          <span className={`text-[10px] tracking-[0.2em] uppercase ${dna.mode === "dynamic" ? "text-red-400 dark:text-red-400/70" : "text-blue-400 dark:text-blue-400/70"}`}>Generated Prompt</span>
+          <span className={`text-[10px] tracking-[0.2em] uppercase ${dna.mode === "dynamic" ? "text-orange-400 dark:text-orange-400/70" : "text-cyan-400 dark:text-cyan-400/70"}`}>Generated Prompt</span>
           <div className="flex gap-2">
             <button onClick={() => openAppLink("https://suno.com")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                 dna.mode === "dynamic"
-                  ? "text-red-600 dark:text-red-400 border-red-200 dark:border-red-700/50 hover:bg-red-100 dark:hover:bg-red-900/40"
-                  : "text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700/50 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                  ? "text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-700/50 hover:bg-orange-100 dark:hover:bg-orange-900/40"
+                  : "text-cyan-600 dark:text-cyan-400 border-cyan-200 dark:border-cyan-700/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/40"
               }`}>
               SUNO ↗
             </button>
@@ -452,13 +452,13 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
                 copied
                   ? "bg-emerald-500 text-white border border-emerald-400"
                   : dna.mode === "dynamic"
-                    ? "bg-red-600 hover:bg-red-500 text-white border border-red-500"
-                    : "bg-blue-600 hover:bg-blue-500 text-white border border-blue-500"
+                    ? "bg-orange-500 hover:bg-orange-400 text-white border border-orange-400"
+                    : "bg-cyan-500 hover:bg-cyan-400 text-white border border-cyan-400"
               }`}
             >{copied ? "✓ COPIED" : "COPY"}</button>
           </div>
         </div>
-        <p className={`text-xs leading-relaxed break-all ${dna.mode === "dynamic" ? "text-gray-600 dark:text-red-200/60" : "text-gray-600 dark:text-blue-200/60"}`}>
+        <p className={`text-xs leading-relaxed break-all ${dna.mode === "dynamic" ? "text-gray-600 dark:text-orange-200/60" : "text-gray-600 dark:text-cyan-200/60"}`}>
           {prompt || <span className="italic text-gray-300 dark:text-white/15">Fixed core + mode priority は常に含まれます。タグを追加でさらにカスタマイズ...</span>}
         </p>
       </div>
