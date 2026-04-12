@@ -42,7 +42,6 @@ export default function PoseChangerPage() {
       })
       .catch((e) => {
         setError(e instanceof Error ? e.message : "画像の読み込みに失敗しました");
-        setPreview(null);
       });
   }, []);
 
