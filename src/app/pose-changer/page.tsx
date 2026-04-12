@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { resizeImage } from "@/lib/resizeImage";
 
 type Analysis = { artStyle:string; face:string; hair:string; skinTone:string; outfit:string; accessories:string; shadingStyle:string };
 type Result = { urls: string[]; analysis: Analysis; prompt: string };
@@ -33,10 +34,10 @@ export default function PoseChangerPage() {
   ) => {
     if (!file.type.startsWith("image/")) return;
     setPreview(URL.createObjectURL(file));
-    setMediaType(file.type || "image/jpeg");
-    const reader = new FileReader();
-    reader.onloadend = () => setBase64((reader.result as string).split(",")[1]);
-    reader.readAsDataURL(file);
+    resizeImage(file).then(({ base64, mediaType }) => {
+      setBase64(base64);
+      setMediaType(mediaType);
+    });
   }, []);
 
   const handleGenerate = async () => {

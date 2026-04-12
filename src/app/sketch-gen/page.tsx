@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { resizeImage } from "@/lib/resizeImage";
 
 const API_HEADERS = { "Content-Type": "application/json" };
 
@@ -61,12 +62,8 @@ export default function SketchGenPage() {
     setAnalyzing(true); setError(null);
     setPreviewUrl(URL.createObjectURL(file));
     setFields(EMPTY_FIELDS);
-    const base64 = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
-      reader.readAsDataURL(file);
-    });
-    setImageBase64(base64); setImageMediaType(file.type || "image/jpeg");
+    const { base64, mediaType } = await resizeImage(file);
+    setImageBase64(base64); setImageMediaType(mediaType);
     try {
       const fd = new FormData(); fd.append("image", file);
       const res  = await fetch("/api/analyze-image", { method: "POST", body: fd });

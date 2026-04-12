@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { resizeImage } from "@/lib/resizeImage";
 
 type LayerResult = { key: string; label: string; url: string | null };
 type Selections = { lighting: string; colorTone: string; atmosphere: string };
@@ -61,11 +62,11 @@ export default function ConceptArtPage() {
   const loadFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) return;
     setPreviewUrl(URL.createObjectURL(file));
-    setImageMediaType(file.type || "image/jpeg");
     setResult(null); setLayers(null); setError(null);
-    const reader = new FileReader();
-    reader.onloadend = () => setImageBase64((reader.result as string).split(",")[1]);
-    reader.readAsDataURL(file);
+    resizeImage(file).then(({ base64, mediaType }) => {
+      setImageBase64(base64);
+      setImageMediaType(mediaType);
+    });
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { openAppLink } from "@/lib/appLink";
 
 // ─── 型定義 ───────────────────────────────────────
 type Phase2Input  = { audioFile: File; audioObjectUrl: string; title: string; theme: string; lyrics: string };
@@ -438,14 +439,14 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
         <div className="flex items-center justify-between mb-2.5">
           <span className={`text-[10px] tracking-[0.2em] uppercase ${dna.mode === "dynamic" ? "text-red-400 dark:text-red-400/70" : "text-blue-400 dark:text-blue-400/70"}`}>Generated Prompt</span>
           <div className="flex gap-2">
-            <a href="https://suno.com" target="_blank" rel="noopener noreferrer"
+            <button onClick={() => openAppLink("https://suno.com")}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
                 dna.mode === "dynamic"
                   ? "text-red-600 dark:text-red-400 border-red-200 dark:border-red-700/50 hover:bg-red-100 dark:hover:bg-red-900/40"
                   : "text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700/50 hover:bg-blue-100 dark:hover:bg-blue-900/40"
               }`}>
               SUNO ↗
-            </a>
+            </button>
             <button onClick={copy}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors min-w-[72px] text-center ${
                 copied
@@ -600,10 +601,10 @@ function MusicGenContent() {
         <Section num={1} title="NOSTALGI-CORE DNA BUILDER">
           <SunoPromptBuilder onPromptChange={setBuiltPrompt} />
           <div className="mt-4 flex items-center justify-between gap-4">
-            <a href="https://suno.com" target="_blank" rel="noopener noreferrer"
-              className="text-xs text-indigo-600 font-semibold hover:underline">
+            <button onClick={() => openAppLink("https://suno.com")}
+              className="text-xs text-indigo-600 font-semibold hover:underline text-left">
               → Suno.com で音楽を生成してダウンロード
-            </a>
+            </button>
             <button onClick={proceedToPhase2}
               className="shrink-0 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors">
               Phase 2 へ進む →
