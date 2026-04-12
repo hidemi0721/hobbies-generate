@@ -1,0 +1,875 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+
+// ─── 型定義 ───────────────────────────────────────
+type Phase2Input  = { audioFile: File; audioObjectUrl: string; title: string; theme: string; lyrics: string };
+type Phase2Result = { imageUrl: string; videoBlob: Blob | null };
+
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+// ─── DNA Builder 定数 ─────────────────────────────
+const DNA_LS_KEY = "nostalgi_core_dna_v1";
+
+type DnaTag  = { id: string; text: string; selected: boolean };
+type DnaMode = "dynamic" | "static";
+type DnaCatKey = "genre" | "inst" | "atm" | "rhythm";
+
+const FIXED_VOCAL = "Transparent breathy female vocals, whispery, fragile";
+const FIXED_WORLD = "Nostalgic, lonely, melancholic, cinematic atmosphere";
+
+const MODE_PRIORITY: Record<DnaMode, string[]> = {
+  dynamic: ["Progressive House", "Complextro", "Kawaii Future Bass", "Technical Rock/Guitar"],
+  static:  ["Ambient", "Minimalist Electronica", "Decadent Lofi", "Mechanical sounds"],
+};
+
+const INIT_GENRE: Record<DnaMode, string[]> = {
+  dynamic: ["iMeiden-style", "Electro House", "Math Rock"],
+  static:  ["NieR-style", "Chillhop", "Glitch"],
+};
+const INIT_INST: Record<DnaMode, string[]> = {
+  dynamic: ["Technical Distorted Guitar", "808 Bass", "Arpeggio Synths"],
+  static:  ["Felt Piano", "Environmental Noise", "Acoustic Guitar"],
+};
+const INIT_ATM    = ["Vinyl Crackle", "Deep Reverb", "Bittersweet", "Fragile"];
+const INIT_RHYTHM = ["Swing", "Double-time"];
+
+type DnaState = {
+  mode: DnaMode;
+  vocalOn: boolean;
+  bpm: string;
+  priority: Record<DnaMode, DnaTag[]>;
+  genre: DnaTag[];
+  inst: DnaTag[];
+  atm: DnaTag[];
+  rhythm: DnaTag[];
+};
+
+function makeTags(texts: string[], sel = false): DnaTag[] {
+  return texts.map(t => ({ id: uid(), text: t, selected: sel }));
+}
+
+function initDna(mode: DnaMode): DnaState {
+  return { mode, vocalOn: true, bpm: "",
+    priority: {
+      dynamic: makeTags(MODE_PRIORITY.dynamic, true),
+      static:  makeTags(MODE_PRIORITY.static, true),
+    },
+    genre:  makeTags(INIT_GENRE[mode]),
+    inst:   makeTags(INIT_INST[mode]),
+    atm:    makeTags(INIT_ATM),
+    rhythm: makeTags(INIT_RHYTHM),
+  };
+}
+
+function buildPrompt(s: DnaState): string {
+  const parts: string[] = [];
+  if (s.vocalOn) parts.push(FIXED_VOCAL);
+  parts.push(FIXED_WORLD);
+  s.priority[s.mode].filter(t => t.selected).forEach(t => parts.push(t.text));
+  [...s.genre, ...s.inst, ...s.atm, ...s.rhythm]
+    .filter(t => t.selected).forEach(t => parts.push(t.text));
+  if (s.bpm.trim()) parts.push(`${s.bpm.trim()} BPM`);
+  if (!s.vocalOn) parts.push("Instrumental");
+  return parts.join(", ");
+}
+
+// ─── テロップ生成 ──────────────────────────────────
+function parseLyricLines(lyrics: string): string[] {
+  return lyrics.split("\n").map(l=>l.trim()).filter(l=>l&&!/^\[.*\]$/.test(l));
+}
+
+// ─── ビジュアライザー付き動画生成 ─────────────────
+async function createVideoBlob(
+  imageUrl: string, audioUrl: string, lyricLines: string[],
+  onProgress: (msg: string) => void
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024; canvas.height = 1024;
+    const ctx = canvas.getContext("2d")!;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const audio = new Audio(audioUrl);
+      if (!audioUrl.startsWith("blob:")) audio.crossOrigin = "anonymous";
+      audio.onloadedmetadata = () => {
+        const duration = audio.duration;
+        onProgress("録画準備中...");
+        try {
+          const audioCtx = new AudioContext();
+          const source   = audioCtx.createMediaElementSource(audio);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          const freqData = new Uint8Array(analyser.frequencyBinCount);
+          const dest = audioCtx.createMediaStreamDestination();
+          source.connect(analyser); analyser.connect(dest); analyser.connect(audioCtx.destination);
+
+          const combined = new MediaStream([
+            ...canvas.captureStream(24).getVideoTracks(),
+            ...dest.stream.getAudioTracks(),
+          ]);
+          const recorder = new MediaRecorder(combined, { mimeType: "video/webm;codecs=vp8,opus" });
+          const chunks: BlobPart[] = [];
+          recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+          recorder.onstop = () => resolve(new Blob(chunks, { type: "video/webm" }));
+          recorder.start(1000);
+          audio.play();
+
+          const startTime = Date.now();
+          const BAR_COUNT = 64, BAR_GAP = 3;
+          const BAR_W = (1024 - BAR_GAP * (BAR_COUNT + 1)) / BAR_COUNT;
+          const VIZ_BOTTOM = 960, VIZ_MAX_H = 160;
+
+          const loop = setInterval(() => {
+            const elapsed = (Date.now() - startTime) / 1000;
+            onProgress(`動画生成中... ${Math.min(Math.floor(elapsed/duration*100),99)}%`);
+
+            ctx.drawImage(img, 0, 0, 1024, 1024);
+            analyser.getByteFrequencyData(freqData);
+
+            const bg = ctx.createLinearGradient(0,750,0,1024);
+            bg.addColorStop(0,"rgba(0,0,0,0)"); bg.addColorStop(.4,"rgba(0,0,0,.55)"); bg.addColorStop(1,"rgba(0,0,0,.8)");
+            ctx.fillStyle = bg; ctx.fillRect(0,750,1024,274);
+
+            const step = Math.floor(freqData.length / BAR_COUNT);
+            for (let i = 0; i < BAR_COUNT; i++) {
+              const barH = Math.max(freqData[i*step]/255*VIZ_MAX_H, 2);
+              const x = BAR_GAP + i*(BAR_W+BAR_GAP), y = VIZ_BOTTOM - barH;
+              const g = ctx.createLinearGradient(0,VIZ_BOTTOM,0,y);
+              g.addColorStop(0,"rgba(99,102,241,.85)"); g.addColorStop(.6,"rgba(167,139,250,.9)"); g.addColorStop(1,"rgba(255,255,255,.95)");
+              ctx.fillStyle = g;
+              ctx.beginPath();
+              const r = Math.min(3,BAR_W/2);
+              ctx.moveTo(x+r,y); ctx.lineTo(x+BAR_W-r,y);
+              ctx.quadraticCurveTo(x+BAR_W,y,x+BAR_W,y+r);
+              ctx.lineTo(x+BAR_W,VIZ_BOTTOM); ctx.lineTo(x,VIZ_BOTTOM); ctx.lineTo(x,y+r);
+              ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); ctx.fill();
+            }
+
+            if (lyricLines.length > 0) {
+              const line = lyricLines[Math.min(Math.floor(elapsed/duration*lyricLines.length), lyricLines.length-1)];
+              ctx.font = "bold 36px 'Hiragino Sans','Noto Sans JP',sans-serif";
+              ctx.textAlign = "center"; ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 10;
+              ctx.fillStyle = "white"; ctx.fillText(line,512,1000); ctx.shadowBlur = 0;
+            }
+
+            if (elapsed >= duration) { clearInterval(loop); recorder.stop(); audio.pause(); }
+          }, 1000/24);
+        } catch(e) { reject(e); }
+      };
+      audio.onerror = () => reject(new Error("音声の読み込みに失敗しました"));
+      audio.load();
+    };
+    img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+    img.src = imageUrl;
+  });
+}
+
+// ─── Phase 1: NOSTALGI-CORE DNA BUILDER ─────────────
+function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => void }) {
+  const [dna,           setDna]           = useState<DnaState | null>(null);
+  const [inputs,        setInputs]        = useState<Record<DnaCatKey, string>>({ genre:"", inst:"", atm:"", rhythm:"" });
+  const [priorityInput, setPriorityInput] = useState("");
+  const [copied,        setCopied]        = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DNA_LS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as DnaState;
+        // マイグレーション: priority フィールドがない古いデータに対応
+        if (!parsed.priority) {
+          parsed.priority = {
+            dynamic: makeTags(MODE_PRIORITY.dynamic, true),
+            static:  makeTags(MODE_PRIORITY.static, true),
+          };
+        }
+        setDna(parsed);
+      } else {
+        setDna(initDna("dynamic"));
+      }
+    } catch { setDna(initDna("dynamic")); }
+  }, []);
+
+  useEffect(() => {
+    if (!dna) return;
+    try { localStorage.setItem(DNA_LS_KEY, JSON.stringify(dna)); } catch {}
+    onPromptChange(buildPrompt(dna));
+  }, [dna, onPromptChange]);
+
+  const switchMode = (m: DnaMode) => setDna(p => p && p.mode !== m
+    ? { ...p, mode: m, genre: makeTags(INIT_GENRE[m]), inst: makeTags(INIT_INST[m]) }
+    : p
+  );
+
+  const togglePriority = (id: string) =>
+    setDna(p => p ? { ...p, priority: { ...p.priority, [p.mode]: p.priority[p.mode].map(t => t.id === id ? { ...t, selected: !t.selected } : t) } } : p);
+
+  const delPriority = (id: string) =>
+    setDna(p => p ? { ...p, priority: { ...p.priority, [p.mode]: p.priority[p.mode].filter(t => t.id !== id) } } : p);
+
+  const addPriority = () => {
+    const text = priorityInput.trim();
+    if (!text) return;
+    setDna(p => p ? { ...p, priority: { ...p.priority, [p.mode]: [...p.priority[p.mode], { id: uid(), text, selected: true }] } } : p);
+    setPriorityInput("");
+  };
+
+  const toggleTag = (cat: DnaCatKey, id: string) =>
+    setDna(p => p ? { ...p, [cat]: p[cat].map(t => t.id === id ? { ...t, selected: !t.selected } : t) } : p);
+
+  const delTag = (cat: DnaCatKey, id: string) =>
+    setDna(p => p ? { ...p, [cat]: p[cat].filter(t => t.id !== id) } : p);
+
+  const addTag = (cat: DnaCatKey) => {
+    const text = inputs[cat].trim();
+    if (!text) return;
+    setDna(p => p ? { ...p, [cat]: [...p[cat], { id: uid(), text, selected: true }] } : p);
+    setInputs(p => ({ ...p, [cat]: "" }));
+  };
+
+  const copy = async () => {
+    if (!dna) return;
+    const p = buildPrompt(dna);
+    await navigator.clipboard.writeText(p);
+    setCopied(true); setTimeout(() => setCopied(false), 2500);
+  };
+
+  if (!dna) return null;
+
+  const prompt = buildPrompt(dna);
+
+  const CAT_CONFIG: { key: DnaCatKey; label: string }[] = [
+    { key: "genre",  label: "GENRE FUSION" },
+    { key: "inst",   label: "INSTRUMENTATION" },
+    { key: "atm",    label: "ATMOSPHERE / TEXTURE" },
+    { key: "rhythm", label: "RHYTHM MODIFIER" },
+  ];
+
+  return (
+    <div className="font-mono flex flex-col gap-4 rounded-2xl bg-gray-100 dark:bg-[#080810] p-4 sm:p-6 border border-gray-200 dark:border-white/[0.06]">
+
+      {/* ── ヘッダー & モードトグル ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 pb-4 border-b border-gray-200 dark:border-white/[0.06]">
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] tracking-[0.25em] text-gray-400 dark:text-white/25 uppercase mb-0.5">Suno Style Prompt</p>
+          <h2 className="text-base sm:text-lg font-bold tracking-tight text-gray-900 dark:text-white">
+            NOSTALGI-CORE DNA BUILDER
+          </h2>
+        </div>
+
+        {/* 大型モードスイッチ */}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => switchMode("dynamic")}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold tracking-wider border transition-all ${
+              dna.mode === "dynamic"
+                ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-900/40"
+                : "bg-transparent border-gray-300 dark:border-white/10 text-gray-400 dark:text-white/30 hover:border-gray-400 dark:hover:border-white/20"
+            }`}
+          >
+            動 Dynamic
+          </button>
+          <div className="relative w-14 h-7 shrink-0" onClick={() => switchMode(dna.mode === "dynamic" ? "static" : "dynamic")}>
+            <div className={`absolute inset-0 rounded-full transition-colors cursor-pointer ${dna.mode === "dynamic" ? "bg-red-600" : "bg-blue-600"}`} />
+            <div className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all cursor-pointer ${dna.mode === "dynamic" ? "left-1" : "left-8"}`} />
+          </div>
+          <button
+            onClick={() => switchMode("static")}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold tracking-wider border transition-all ${
+              dna.mode === "static"
+                ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/40"
+                : "bg-transparent border-gray-300 dark:border-white/10 text-gray-400 dark:text-white/30 hover:border-gray-400 dark:hover:border-white/20"
+            }`}
+          >
+            静 Static
+          </button>
+        </div>
+      </div>
+
+      {/* ── Fixed Core ── */}
+      <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="text-[10px] tracking-[0.2em] text-gray-400 dark:text-white/25 uppercase">Fixed Core</span>
+          {/* Vocal Toggle */}
+          <button
+            onClick={() => setDna(p => p ? { ...p, vocalOn: !p.vocalOn } : p)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold tracking-wider transition-all ${
+              dna.vocalOn
+                ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-400"
+                : "bg-gray-100 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.06] text-gray-400 dark:text-white/25"
+            }`}
+          >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${dna.vocalOn ? "bg-emerald-500" : "bg-gray-400 dark:bg-white/20"}`} />
+            VOCAL {dna.vocalOn ? "ON" : "OFF"}
+          </button>
+        </div>
+        <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
+          <p className={`transition-opacity ${dna.vocalOn ? "text-gray-700 dark:text-white/70" : "text-gray-300 dark:text-white/20 line-through"}`}>
+            <span className="text-gray-400 dark:text-white/25 mr-1.5">VOC</span>{FIXED_VOCAL}
+          </p>
+          <p className="text-gray-700 dark:text-white/70">
+            <span className="text-gray-400 dark:text-white/25 mr-1.5">ATM</span>{FIXED_WORLD}
+          </p>
+          {!dna.vocalOn && (
+            <p className="text-amber-600 dark:text-amber-400">
+              <span className="text-gray-400 dark:text-white/25 mr-1.5">INJ</span>Instrumental
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Mode Priority ── */}
+      <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="text-[10px] tracking-[0.2em] text-gray-400 dark:text-white/25 uppercase">Mode Priority</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${dna.mode === "dynamic" ? "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400" : "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"}`}>
+            {dna.mode === "dynamic" ? "動" : "静"}
+          </span>
+          <span className="text-[10px] text-gray-300 dark:text-white/15 ml-auto">モード別に独立保存</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-2.5">
+          {dna.priority[dna.mode].map(tag => (
+            <div key={tag.id} className="relative group/ptag">
+              <button
+                onClick={() => togglePriority(tag.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs border transition-all select-none ${
+                  tag.selected
+                    ? dna.mode === "dynamic"
+                      ? "bg-red-600 border-red-500 text-white shadow-sm"
+                      : "bg-blue-600 border-blue-500 text-white shadow-sm"
+                    : "bg-gray-100 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/40 hover:border-gray-300 dark:hover:border-white/15 hover:text-gray-700 dark:hover:text-white/70"
+                }`}
+              >{tag.text}</button>
+              <button
+                onClick={() => delPriority(tag.id)}
+                className="absolute -top-1.5 -right-1.5 hidden group-hover/ptag:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none z-10"
+              >×</button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={priorityInput}
+            onChange={e => setPriorityInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addPriority()}
+            placeholder="+ add priority tag..."
+            className="flex-1 bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/15 focus:outline-none focus:border-red-500 dark:focus:border-blue-500"
+          />
+          <button
+            onClick={addPriority}
+            disabled={!priorityInput.trim()}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.08] disabled:opacity-30 text-gray-500 dark:text-white/30 hover:text-gray-700 dark:hover:text-white/60 text-xs font-semibold transition-colors"
+          >ADD</button>
+        </div>
+      </div>
+
+      {/* ── カテゴリー群 ── */}
+      {CAT_CONFIG.map(({ key, label }) => (
+        <div key={key} className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] p-3 sm:p-4">
+          <span className="text-[10px] tracking-[0.2em] text-gray-400 dark:text-white/25 uppercase block mb-2.5">{label}</span>
+
+          {/* BPM input (rhythm のみ) */}
+          {key === "rhythm" && (
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="text-xs text-gray-400 dark:text-white/25">BPM</span>
+              <input
+                type="number" min={1} max={300}
+                value={dna.bpm}
+                onChange={e => setDna(p => p ? { ...p, bpm: e.target.value } : p)}
+                placeholder="170"
+                className="w-20 bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] rounded-lg px-2.5 py-1.5 text-sm text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/20 focus:outline-none focus:border-indigo-500 tabular-nums"
+              />
+              {dna.bpm && (
+                <span className={`text-xs font-bold ${dna.mode === "dynamic" ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>{dna.bpm} BPM</span>
+              )}
+            </div>
+          )}
+
+          {/* タグ */}
+          <div className="flex flex-wrap gap-1.5 mb-2.5">
+            {dna[key].map(tag => (
+              <div key={tag.id} className="relative group/tag">
+                <button
+                  onClick={() => toggleTag(key, tag.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all select-none ${
+                    tag.selected
+                      ? dna.mode === "dynamic"
+                        ? "bg-red-600 border-red-500 text-white shadow-sm"
+                        : "bg-blue-600 border-blue-500 text-white shadow-sm"
+                      : "bg-gray-100 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/40 hover:border-gray-300 dark:hover:border-white/15 hover:text-gray-700 dark:hover:text-white/70"
+                  }`}
+                >{tag.text}</button>
+                <button
+                  onClick={() => delTag(key, tag.id)}
+                  className="absolute -top-1.5 -right-1.5 hidden group-hover/tag:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none z-10"
+                >×</button>
+              </div>
+            ))}
+          </div>
+
+          {/* タグ追加 */}
+          <div className="flex gap-2">
+            <input
+              value={inputs[key]}
+              onChange={e => setInputs(p => ({ ...p, [key]: e.target.value }))}
+              onKeyDown={e => e.key === "Enter" && addTag(key)}
+              placeholder="+ add tag..."
+              className="flex-1 bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] rounded-lg px-3 py-1.5 text-xs text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/15 focus:outline-none focus:border-indigo-500"
+            />
+            <button
+              onClick={() => addTag(key)}
+              disabled={!inputs[key].trim()}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.08] disabled:opacity-30 text-gray-500 dark:text-white/30 hover:text-gray-700 dark:hover:text-white/60 text-xs font-semibold transition-colors"
+            >ADD</button>
+          </div>
+        </div>
+      ))}
+
+      {/* ── プロンプト出力 ── */}
+      <div className={`rounded-xl border p-3 sm:p-4 ${
+        dna.mode === "dynamic"
+          ? "border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20"
+          : "border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/20"
+      }`}>
+        <div className="flex items-center justify-between mb-2.5">
+          <span className={`text-[10px] tracking-[0.2em] uppercase ${dna.mode === "dynamic" ? "text-red-400 dark:text-red-400/70" : "text-blue-400 dark:text-blue-400/70"}`}>Generated Prompt</span>
+          <div className="flex gap-2">
+            <a href="https://suno.com" target="_blank" rel="noopener noreferrer"
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                dna.mode === "dynamic"
+                  ? "text-red-600 dark:text-red-400 border-red-200 dark:border-red-700/50 hover:bg-red-100 dark:hover:bg-red-900/40"
+                  : "text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-700/50 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+              }`}>
+              SUNO ↗
+            </a>
+            <button onClick={copy}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors min-w-[72px] text-center ${
+                copied
+                  ? "bg-emerald-500 text-white border border-emerald-400"
+                  : dna.mode === "dynamic"
+                    ? "bg-red-600 hover:bg-red-500 text-white border border-red-500"
+                    : "bg-blue-600 hover:bg-blue-500 text-white border border-blue-500"
+              }`}
+            >{copied ? "✓ COPIED" : "COPY"}</button>
+          </div>
+        </div>
+        <p className={`text-xs leading-relaxed break-all ${dna.mode === "dynamic" ? "text-gray-600 dark:text-red-200/60" : "text-gray-600 dark:text-blue-200/60"}`}>
+          {prompt || <span className="italic text-gray-300 dark:text-white/15">Fixed core + mode priority は常に含まれます。タグを追加でさらにカスタマイズ...</span>}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── メインページ ─────────────────────────────────
+function MusicGenContent() {
+  const searchParams = useSearchParams();
+
+  // Phase 1
+  const [builtPrompt, setBuiltPrompt] = useState("");
+  const [phase1Done,  setPhase1Done]  = useState(false);
+
+  // Phase 2 inputs
+  const [audioFile,  setAudioFile]  = useState<File | null>(null);
+  const [title,      setTitle]      = useState("");
+  const [theme,      setTheme]      = useState("");
+  const [lyrics,     setLyrics]     = useState("");
+  const [audioDrag,  setAudioDrag]  = useState(false);
+  const audioObjRef = useRef<string | null>(null);
+
+  // Phase 2 result
+  const [phase2Result, setPhase2Result] = useState<Phase2Result | null>(null);
+  const [step2Loading, setStep2Loading] = useState(false);
+  const [step2Status,  setStep2Status]  = useState("");
+
+  // Phase 3
+  const [ytConnected,   setYtConnected]   = useState(false);
+  const [scConnected,   setScConnected]   = useState(false);
+  const [privacy,       setPrivacy]       = useState("unlisted");
+  const [ytLoading,     setYtLoading]     = useState(false);
+  const [scLoading,     setScLoading]     = useState(false);
+  const [youtubeUrl,    setYoutubeUrl]    = useState<string | null>(null);
+  const [soundcloudUrl, setSoundcloudUrl] = useState<string | null>(null);
+
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => () => { if (audioObjRef.current) URL.revokeObjectURL(audioObjRef.current); }, []);
+
+  useEffect(() => {
+    if (searchParams.get("youtube_connected") === "1") setYtConnected(true);
+    if (searchParams.get("sc_connected") === "1") setScConnected(true);
+    const err = searchParams.get("youtube_error") ?? searchParams.get("sc_error");
+    if (err) setError(`認証エラー: ${err}`);
+  }, [searchParams]);
+
+  // Phase 1 完了時にテーマを自動セット
+  const proceedToPhase2 = () => {
+    setPhase1Done(true);
+    if (!theme) setTheme(builtPrompt);
+  };
+
+  // 音声ファイルをセット
+  const applyAudio = useCallback((file: File) => {
+    if (audioObjRef.current) URL.revokeObjectURL(audioObjRef.current);
+    audioObjRef.current = URL.createObjectURL(file);
+    setAudioFile(file);
+  }, []);
+
+  const onAudioDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setAudioDrag(false);
+    const f = e.dataTransfer.files[0];
+    if (f?.type.startsWith("audio/")) applyAudio(f);
+  }, [applyAudio]);
+
+  // Phase 2: 画像 + 動画生成
+  const runPhase2 = async () => {
+    if (!audioFile || !audioObjRef.current || !title.trim()) return;
+    setStep2Loading(true); setError(null); setPhase2Result(null);
+    setStep2Status("DALL-E 3 でジャケット画像を生成中...");
+    try {
+      const iRes  = await fetch("/api/music-gen/image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_prompt:theme||builtPrompt||title,title})});
+      const iData = await iRes.json();
+      if (iData.error) throw new Error(iData.error);
+
+      setStep2Status("ブラウザで動画を生成中（曲の長さ分かかります）...");
+      const videoBlob = await createVideoBlob(iData.url, audioObjRef.current, parseLyricLines(lyrics), setStep2Status);
+      setPhase2Result({ imageUrl: iData.url, videoBlob });
+      setStep2Status("✅ 動画生成完了");
+    } catch(e) {
+      setError(e instanceof Error ? e.message : "エラーが発生しました");
+      setStep2Status("");
+    } finally { setStep2Loading(false); }
+  };
+
+  // Phase 3: YouTube
+  const runYouTube = async () => {
+    if (!phase2Result?.videoBlob) return;
+    setYtLoading(true); setError(null);
+    try {
+      const form = new FormData();
+      form.append("video", phase2Result.videoBlob, "music.webm");
+      form.append("title", title); form.append("description", theme); form.append("privacy", privacy);
+      const data = await fetch("/api/music-gen/youtube/upload",{method:"POST",body:form}).then(r=>r.json());
+      if (data.error) throw new Error(data.error);
+      setYoutubeUrl(data.url);
+    } catch(e) { setError(e instanceof Error ? e.message : "エラーが発生しました"); }
+    finally { setYtLoading(false); }
+  };
+
+  // Phase 3: SoundCloud
+  const runSoundCloud = async () => {
+    if (!audioFile) return;
+    setScLoading(true); setError(null);
+    try {
+      const form = new FormData();
+      form.append("audio", audioFile, audioFile.name);
+      form.append("title", title); form.append("description", theme);
+      if (phase2Result?.imageUrl) {
+        const r = await fetch(phase2Result.imageUrl);
+        form.append("artwork", await r.blob(), "artwork.png");
+      }
+      const data = await fetch("/api/music-gen/soundcloud/upload",{method:"POST",body:form}).then(r=>r.json());
+      if (data.error) throw new Error(data.error);
+      setSoundcloudUrl(data.url);
+    } catch(e) { setError(e instanceof Error ? e.message : "エラーが発生しました"); }
+    finally { setScLoading(false); }
+  };
+
+  const phase2Done = !!phase2Result;
+  const canGenerate = !!audioFile && !!title.trim();
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white p-4 sm:p-6">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-2xl sm:text-3xl font-bold mb-1 tracking-tight">Music Generator</h1>
+        <p className="text-gray-400 dark:text-gray-500 mb-6 sm:mb-8 text-sm">Sunoプロンプトを組み立てて、生成した音楽から動画を作成・配信</p>
+
+        {error && (
+          <div className="mb-6 p-3 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm flex gap-2">
+            <span className="font-bold shrink-0">Error:</span>
+            <span className="flex-1 break-all">{error}</span>
+            <button onClick={()=>setError(null)} className="shrink-0 text-red-400 hover:text-red-600">✕</button>
+          </div>
+        )}
+
+        {/* ── Phase 1: DNA Builder ── */}
+        <Section num={1} title="NOSTALGI-CORE DNA BUILDER">
+          <SunoPromptBuilder onPromptChange={setBuiltPrompt} />
+          <div className="mt-4 flex items-center justify-between gap-4">
+            <a href="https://suno.com" target="_blank" rel="noopener noreferrer"
+              className="text-xs text-indigo-600 font-semibold hover:underline">
+              → Suno.com で音楽を生成してダウンロード
+            </a>
+            <button onClick={proceedToPhase2}
+              className="shrink-0 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors">
+              Phase 2 へ進む →
+            </button>
+          </div>
+          {phase1Done && (
+            <p className="mt-2 text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+              ✅ Phase 2 のテーマに「{builtPrompt.slice(0,60)}{builtPrompt.length>60?"...":""}」をセットしました
+            </p>
+          )}
+        </Section>
+
+        {/* ── Phase 2: 音楽アップロード & 動画生成 ── */}
+        <Section num={2} title="音楽をアップロード & 動画生成" locked={!phase1Done}>
+          <div className="flex flex-col gap-4">
+            {/* 音声ドロップゾーン */}
+            <div
+              onDragOver={e=>{e.preventDefault();setAudioDrag(true);}}
+              onDragLeave={()=>setAudioDrag(false)}
+              onDrop={onAudioDrop}
+              className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 sm:p-7 text-center transition-colors ${
+                audioDrag?"border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30":"border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600"}`}
+            >
+              <span className="text-2xl">🎵</span>
+              {audioFile
+                ? <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{audioFile.name}</p>
+                : <p className="text-sm text-gray-400 dark:text-gray-500">Sunoでダウンロードした音声をドロップ</p>
+              }
+              <label className="cursor-pointer rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 transition-colors">
+                ファイルを選択
+                <input type="file" accept="audio/*" className="hidden"
+                  onChange={e=>{const f=e.target.files?.[0];if(f)applyAudio(f);}} />
+              </label>
+              <p className="text-xs text-gray-300 dark:text-gray-600">MP3 / WAV / M4A 対応</p>
+            </div>
+
+            {audioFile && audioObjRef.current && (
+              <audio controls src={audioObjRef.current} className="w-full" />
+            )}
+
+            {/* メタデータ */}
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">タイトル <span className="text-red-400">*</span></label>
+              <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="楽曲のタイトル"
+                className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">テーマ / イメージ（ジャケット生成に使用）</label>
+              <textarea value={theme} onChange={e=>setTheme(e.target.value)} rows={2}
+                placeholder="Phase 1 のプロンプトが自動入力されます"
+                className="w-full resize-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">歌詞（動画テロップ用・任意）</label>
+              <textarea value={lyrics} onChange={e=>setLyrics(e.target.value)} rows={4}
+                placeholder={"[Verse]\n夜が来るたびに...\n\n[Chorus]\n輝く星よ..."}
+                className="w-full resize-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
+            </div>
+
+            <button onClick={runPhase2} disabled={!canGenerate||step2Loading}
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+              {step2Loading ? <><Spinner />生成中...</> : "▶ 画像・動画を生成"}
+            </button>
+            {step2Status && <p className="text-xs text-gray-500 dark:text-gray-400">{step2Status}</p>}
+
+            {phase2Result && (
+              <div className="flex flex-col gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={phase2Result.imageUrl} alt="jacket" className="w-full max-w-xs rounded-xl shadow mx-auto" />
+                {phase2Result.videoBlob && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">生成された動画</p>
+                    <video controls className="w-full rounded-xl" src={URL.createObjectURL(phase2Result.videoBlob)} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* ── Phase 3: 配信 ── */}
+        <Section num={3} title="配信" locked={!phase2Done}>
+          <div className="flex flex-col gap-6">
+
+            {/* ダウンロード */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">ダウンロード</p>
+              <div className="flex flex-wrap gap-2">
+                {audioFile && audioObjRef.current && (
+                  <a href={audioObjRef.current} download={audioFile.name}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    🎵 音声
+                  </a>
+                )}
+                {phase2Result?.imageUrl && (
+                  <a href={phase2Result.imageUrl} download="jacket.png"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    🖼 ジャケット
+                  </a>
+                )}
+                {phase2Result?.videoBlob && (
+                  <a href={URL.createObjectURL(phase2Result.videoBlob)} download="music_video.webm"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    🎬 動画
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* YouTube */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">YouTube</p>
+              {!ytConnected ? (
+                <a href="/api/music-gen/youtube/auth"
+                  className="block w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm text-center transition-colors">
+                  Google アカウントと接続する
+                </a>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    {["unlisted（未公開リンク）","private（非公開）","public（公開）"].map(v=>{
+                      const val=v.split("（")[0];
+                      return (
+                        <button key={val} onClick={()=>setPrivacy(val)}
+                          className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors ${privacy===val?"bg-gray-900 text-white":"bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                          {v}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button onClick={runYouTube} disabled={!phase2Result?.videoBlob||ytLoading}
+                    className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                    {ytLoading?<><Spinner/>アップロード中...</>:"▶ YouTube にアップロード"}
+                  </button>
+                </div>
+              )}
+              {youtubeUrl && (
+                <div className="mt-2 p-3 rounded-xl bg-green-50 border border-green-200">
+                  <p className="text-xs font-semibold text-green-700 mb-1">✅ YouTube アップロード完了</p>
+                  <a href={youtubeUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-indigo-600 hover:underline break-all">{youtubeUrl}</a>
+                </div>
+              )}
+            </div>
+
+            {/* SoundCloud */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">SoundCloud</p>
+              {!scConnected ? (
+                <a href="/api/music-gen/soundcloud/auth"
+                  className="block w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-white font-semibold text-sm text-center transition-colors">
+                  SoundCloud アカウントと接続する
+                </a>
+              ) : (
+                <button onClick={runSoundCloud} disabled={!audioFile||scLoading}
+                  className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+                  {scLoading?<><Spinner/>アップロード中...</>:"▶ SoundCloud にアップロード"}
+                </button>
+              )}
+              {soundcloudUrl && (
+                <div className="mt-2 p-3 rounded-xl bg-green-50 border border-green-200">
+                  <p className="text-xs font-semibold text-green-700 mb-1">✅ SoundCloud アップロード完了</p>
+                  <a href={soundcloudUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-xs text-indigo-600 hover:underline break-all">{soundcloudUrl}</a>
+                </div>
+              )}
+            </div>
+
+            {/* 音楽ストア配信 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">音楽ストア配信</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                Apple Music・Spotify・Amazon Music 等への配信は Frekul 経由で行います。
+                ダウンロードした音声とジャケット画像をそのまま使用できます。
+              </p>
+              <div className="flex flex-col gap-2">
+                {DISTRIBUTORS.map(d=>(
+                  <ExternalLink key={d.name} name={d.name} desc={d.desc} href={d.href} />
+                ))}
+              </div>
+            </div>
+
+            {/* フリー素材配信 */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">フリー素材として配信</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                いずれも手動申請フォームのみ（API 非公開）。ダウンロードした音声ファイルで申請できます。
+              </p>
+              <div className="flex flex-col gap-2">
+                {FREE_SERVICES.map(s=>(
+                  <ExternalLink key={s.name} name={s.name} desc={s.desc} href={s.href} />
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </Section>
+
+        {/* リセット */}
+        <button
+          onClick={()=>{
+            setPhase1Done(false); setPhase2Result(null); setYoutubeUrl(null); setSoundcloudUrl(null);
+            setAudioFile(null); setTitle(""); setTheme(""); setLyrics(""); setError(null); setStep2Status("");
+          }}
+          className="w-full mt-4 py-2 rounded-xl border border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 text-sm hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+          🔄 リセット
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── 配信サービス定数 ─────────────────────────────
+const DISTRIBUTORS = [
+  { name:"Frekul", desc:"Apple Music・Spotify・Amazon Music 等に一括配信。国内アーティスト向け日本語サービス", href:"https://frekul.com/" },
+];
+const FREE_SERVICES = [
+  { name:"DOVA-SYNDROME", desc:"動画・ゲーム向けフリーBGMサイト。申請フォームで審査あり", href:"https://dova-s.jp/make/" },
+  { name:"魔王魂", desc:"フリー素材として多くのクリエイターに利用される老舗サービス", href:"https://maou.audio/form/" },
+  { name:"Pixabay Music", desc:"英語圏中心のCC0フリー音楽プラットフォーム", href:"https://pixabay.com/music/upload/" },
+];
+
+// ─── 共通 UI ─────────────────────────────────────
+function ExternalLink({ name, desc, href }: { name: string; desc: string; href: string }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
+      <div>
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{name}</span>
+        <p className="text-xs text-gray-400 dark:text-gray-500">{desc}</p>
+      </div>
+      <svg className="h-4 w-4 text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+      </svg>
+    </a>
+  );
+}
+
+function Section({ num, title, children, locked=false, dark=false }: {
+  num:number; title:string; children:React.ReactNode; locked?:boolean; dark?:boolean;
+}) {
+  return (
+    <div className={`mb-4 rounded-2xl border transition-colors ${
+      locked ? "border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 opacity-50"
+      : dark  ? "border-gray-800 bg-gray-950"
+      : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+    }`}>
+      <div className={`flex items-center gap-2 px-4 sm:px-5 pt-4 sm:pt-5 pb-3 sm:pb-4 ${dark?"border-b border-white/[0.06]":"border-b border-gray-100 dark:border-gray-800"}`}>
+        <span className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center shrink-0">{num}</span>
+        <h2 className={`text-base font-semibold ${dark?"text-white":"text-gray-800 dark:text-white"}`}>{title}</h2>
+        {locked && <span className="text-xs text-gray-400 ml-auto hidden sm:block">前のフェーズを完了してください</span>}
+      </div>
+      <div className="px-4 sm:px-5 pb-4 sm:pb-5">{children}</div>
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+    </svg>
+  );
+}
+
+export default function MusicGenPage() {
+  return <Suspense><MusicGenContent /></Suspense>;
+}
