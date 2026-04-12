@@ -125,24 +125,26 @@ async function generateVideoWithFFmpeg(
 
   try {
     // ── FFmpeg 実行 ──────────────────────────────
-    // 画像を 1024x1024 にスケール→波形を下部に overlay
     await ff.exec([
-      "-loop",  "1",     "-i", "input.png",
-      "-i",     audioIn,
+      "-loop", "1", "-i", "input.png",
+      "-i", audioIn,
       "-filter_complex",
-      // 画像を正方形に収めてパディング
-      "[0:v]scale=1024:1024:force_original_aspect_ratio=decrease," +
-      "pad=1024:1024:(ow-iw)/2:(oh-ih)/2:black[bg];" +
-      // 音声波形（1024x200、インジゴ系グラデーション）
-      "[1:a]showwaves=s=1024x200:mode=cline:colors=0x6366f1|0xa78bfa:scale=sqrt[waves];" +
-      // 波形を画像下部に重ねる（y=824 → 1024-200=824）
-      "[bg][waves]overlay=0:824",
-      "-c:v",   "libx264",
-      "-c:a",   "aac",
-      "-pix_fmt", "yuv420p",  // モバイル互換
-      "-crf",   "28",          // 品質（数値大＝軽量）
-      "-b:a",   "128k",
-      "-shortest",             // 音声が終わったら終了
+        // 画像を 1024x1024 に scale + pad
+        "[0:v]scale=1024:1024:force_original_aspect_ratio=decrease," +
+        "pad=1024:1024:(ow-iw)/2:(oh-ih)/2:black[bg];" +
+        // 音声から波形ビデオを生成
+        "[1:a]showwaves=s=1024x200:mode=cline:colors=0x6366f1|0xa78bfa:scale=sqrt[waves];" +
+        // 波形を画像下部に overlay → [outv] として出力
+        "[bg][waves]overlay=0:824[outv]",
+      // [outv] = 映像、1:a = 元の音声を両方マップ
+      "-map", "[outv]",
+      "-map", "1:a",
+      "-c:v", "libx264",
+      "-c:a", "aac",
+      "-pix_fmt", "yuv420p",
+      "-crf", "28",
+      "-b:a", "128k",
+      "-shortest",
       "output.mp4",
     ]);
   } finally {
@@ -825,9 +827,20 @@ function MusicGenContent() {
           <div className="flex flex-col gap-4">
             {/* 音声ドロップゾーン */}
             <div
+              onDragEnter={e=>{e.preventDefault();setAudioDrag(true);}}
               onDragOver={e=>{e.preventDefault();setAudioDrag(true);}}
-              onDragLeave={()=>setAudioDrag(false)}
-              onDrop={onAudioDrop}
+              onDragLeave={e=>{
+                // 子要素への移動時は無視（ゾーンを完全に出た時だけ解除）
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setAudioDrag(false);
+              }}
+              onDrop={e=>{
+                e.preventDefault(); e.stopPropagation(); setAudioDrag(false);
+                const f = e.dataTransfer.files[0];
+                if (!f) return;
+                const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+                const ok = f.type.startsWith("audio/") || ["mp3","wav","m4a","aac","ogg","flac"].includes(ext);
+                if (ok) applyAudio(f);
+              }}
               className={`flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-6 sm:p-7 text-center transition-colors ${
                 audioDrag?"border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30":"border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600"}`}
             >
@@ -885,9 +898,10 @@ function MusicGenContent() {
 
               {imgSource === "custom" && (
                 <div
+                  onDragEnter={e => { e.preventDefault(); setImgDrag(true); }}
                   onDragOver={e => { e.preventDefault(); setImgDrag(true); }}
-                  onDragLeave={() => setImgDrag(false)}
-                  onDrop={e => { e.preventDefault(); setImgDrag(false); const f = e.dataTransfer.files[0]; if (f) applyCustomImg(f); }}
+                  onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setImgDrag(false); }}
+                  onDrop={e => { e.preventDefault(); e.stopPropagation(); setImgDrag(false); const f = e.dataTransfer.files[0]; if (f) applyCustomImg(f); }}
                   className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 text-center transition-colors cursor-pointer ${
                     imgDrag ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
                   }`}
