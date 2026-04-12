@@ -129,9 +129,22 @@ export async function POST(req: NextRequest) {
         mode?: Mode;
       };
 
-    if (!imageBase64) return NextResponse.json({ error: "No image" }, { status: 400 });
+    if (!imageBase64 || imageBase64.length < 100) {
+      return NextResponse.json({ error: "画像データが不正です。別の画像を試してください。" }, { status: 400 });
+    }
 
-    const imageBuf = await prepareImage(imageBase64);
+    // base64文字以外が含まれていないか確認
+    if (!/^[A-Za-z0-9+/=]+$/.test(imageBase64)) {
+      return NextResponse.json({ error: "画像データの形式が正しくありません。" }, { status: 400 });
+    }
+
+    let imageBuf: Buffer;
+    try {
+      imageBuf = await prepareImage(imageBase64);
+    } catch (e) {
+      console.error("[concept-art prepareImage error]", e);
+      return NextResponse.json({ error: "画像の処理に失敗しました。JPEGまたはPNG画像を使用してください。" }, { status: 400 });
+    }
     const styleSuffix = buildStyleSuffix(selections);
     const skipCool = selections.colorTone === "warm" || selections.lighting === "golden";
 

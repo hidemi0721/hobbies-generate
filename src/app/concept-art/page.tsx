@@ -63,10 +63,16 @@ export default function ConceptArtPage() {
     if (!file.type.startsWith("image/")) return;
     setPreviewUrl(URL.createObjectURL(file));
     setResult(null); setLayers(null); setError(null);
-    resizeImage(file).then(({ base64, mediaType }) => {
-      setImageBase64(base64);
-      setImageMediaType(mediaType);
-    });
+    setImageBase64(null);
+    resizeImage(file)
+      .then(({ base64, mediaType }) => {
+        setImageBase64(base64);
+        setImageMediaType(mediaType);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "画像の読み込みに失敗しました");
+        setPreviewUrl(null);
+      });
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

@@ -62,8 +62,13 @@ export default function SketchGenPage() {
     setAnalyzing(true); setError(null);
     setPreviewUrl(URL.createObjectURL(file));
     setFields(EMPTY_FIELDS);
-    const { base64, mediaType } = await resizeImage(file);
-    setImageBase64(base64); setImageMediaType(mediaType);
+    try {
+      const { base64, mediaType } = await resizeImage(file);
+      setImageBase64(base64); setImageMediaType(mediaType);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "画像の読み込みに失敗しました");
+      setPreviewUrl(null); setAnalyzing(false); return;
+    }
     try {
       const fd = new FormData(); fd.append("image", file);
       const res  = await fetch("/api/analyze-image", { method: "POST", body: fd });

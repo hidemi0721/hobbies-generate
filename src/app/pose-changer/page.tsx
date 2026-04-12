@@ -34,10 +34,16 @@ export default function PoseChangerPage() {
   ) => {
     if (!file.type.startsWith("image/")) return;
     setPreview(URL.createObjectURL(file));
-    resizeImage(file).then(({ base64, mediaType }) => {
-      setBase64(base64);
-      setMediaType(mediaType);
-    });
+    setBase64("");
+    resizeImage(file)
+      .then(({ base64, mediaType }) => {
+        setBase64(base64);
+        setMediaType(mediaType);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "画像の読み込みに失敗しました");
+        setPreview(null);
+      });
   }, []);
 
   const handleGenerate = async () => {
