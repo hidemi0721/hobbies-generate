@@ -113,85 +113,125 @@ async function createVideoBlob(
         }
         onProgress("録画準備中...");
         try {
-          const audioCtx = new AudioContext();
-          const source   = audioCtx.createMediaElementSource(audio);
-          const analyser = audioCtx.createAnalyser();
-          analyser.fftSize = 256;
-          const freqData = new Uint8Array(analyser.frequencyBinCount);
-          const dest = audioCtx.createMediaStreamDestination();
-          source.connect(analyser); analyser.connect(dest); analyser.connect(audioCtx.destination);
+          // ─── AudioContext はビジュアライザーのみに使用（録画ストリームには含めない）
+          // これにより autoplay ブロック / AudioContext suspended の影響を受けず
+          // canvas ストリームだけで確実に録画できる
+          const freqData = new Uint8Array(64);
+          let analyser: AnalyserNode | null = null;
+          try {
+            const audioCtx = new AudioContext();
+            const source   = audioCtx.createMediaElementSource(audio);
+            const an       = audioCtx.createAnalyser();
+            an.fftSize = 128;
+            analyser = an;
+            source.connect(an); an.connect(audioCtx.destination);
+            audioCtx.resume().catch(() => {});
+          } catch { /* AudioContext 失敗は無視 — ビジュアライザーなしで続行 */ }
 
-          const combined = new MediaStream([
-            ...canvas.captureStream(24).getVideoTracks(),
-            ...dest.stream.getAudioTracks(),
-          ]);
-
-          // iOS Safari は webm 非対応のため対応フォーマットを自動選択
-          const mimeType = ["video/webm;codecs=vp8,opus","video/webm","video/mp4",""].find(
+          // canvas ストリームのみで録画（audio を含めると mobile で空 blob になる）
+          const canvasStream = canvas.captureStream(24);
+          const mimeType = ["video/webm;codecs=vp8","video/webm","video/mp4",""].find(
             t => t === "" || MediaRecorder.isTypeSupported(t)
           ) ?? "";
 
-          const recorder = new MediaRecorder(combined, mimeType ? { mimeType } : {});
+          const recorder = new MediaRecorder(canvasStream, mimeType ? { mimeType } : {});
           const chunks: BlobPart[] = [];
-          let resolved = false;
+          let finished = false;
+          let animFrame = 0;
+
+          const resolveBlob = () => {
+            cancelAnimationFrame(animFrame);
+            const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" });
+            if (blob.size < 1000) {
+              reject(new Error("動画データの生成に失敗しました。このブラウザ・デバイスは非対応の可能性があります。"));
+            } else {
+              resolve(blob);
+            }
+          };
 
           const finish = () => {
-            if (resolved) return;
-            resolved = true;
-            resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" }));
+            if (finished) return;
+            finished = true;
+            try { recorder.state !== "inactive" && recorder.stop(); } catch {}
+            resolveBlob();
           };
 
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = finish;
-          recorder.start(1000);
-          audio.play().catch(() => { /* autoplay blocked は無視して続行 */ });
+          recorder.onstop = () => {
+            if (finished) return;
+            finished = true;
+            resolveBlob();
+          };
+          recorder.start(500); // 500ms ごとにデータを収集
+
+          // 音声再生（ビジュアライザー用。失敗しても続行）
+          audio.play().catch(() => {});
 
           const startTime = Date.now();
           const BAR_COUNT = 64, BAR_GAP = 3;
           const BAR_W = (1024 - BAR_GAP * (BAR_COUNT + 1)) / BAR_COUNT;
           const VIZ_BOTTOM = 960, VIZ_MAX_H = 160;
 
-          const loop = setInterval(() => {
+          const tick = () => {
             const elapsed = (Date.now() - startTime) / 1000;
-            onProgress(`動画生成中... ${Math.min(Math.floor(elapsed/duration*100),99)}%`);
+            onProgress(`動画生成中... ${Math.min(Math.floor(elapsed / duration * 100), 99)}%`);
 
             ctx.drawImage(img, 0, 0, 1024, 1024);
-            analyser.getByteFrequencyData(freqData);
 
-            const bg = ctx.createLinearGradient(0,750,0,1024);
-            bg.addColorStop(0,"rgba(0,0,0,0)"); bg.addColorStop(.4,"rgba(0,0,0,.55)"); bg.addColorStop(1,"rgba(0,0,0,.8)");
-            ctx.fillStyle = bg; ctx.fillRect(0,750,1024,274);
+            // ビジュアライザー描画
+            if (analyser) {
+              analyser.getByteFrequencyData(freqData);
+            } else {
+              // AudioContext なしの場合はサイン波ダミーアニメーション
+              for (let i = 0; i < freqData.length; i++) {
+                freqData[i] = Math.max(0, Math.sin(elapsed * 3 + i * 0.3) * 80 + 80) | 0;
+              }
+            }
 
-            const step = Math.floor(freqData.length / BAR_COUNT);
+            const bg = ctx.createLinearGradient(0, 750, 0, 1024);
+            bg.addColorStop(0, "rgba(0,0,0,0)"); bg.addColorStop(.4, "rgba(0,0,0,.55)"); bg.addColorStop(1, "rgba(0,0,0,.8)");
+            ctx.fillStyle = bg; ctx.fillRect(0, 750, 1024, 274);
+
+            const step = Math.max(1, Math.floor(freqData.length / BAR_COUNT));
             for (let i = 0; i < BAR_COUNT; i++) {
-              const barH = Math.max(freqData[i*step]/255*VIZ_MAX_H, 2);
-              const x = BAR_GAP + i*(BAR_W+BAR_GAP), y = VIZ_BOTTOM - barH;
-              const g = ctx.createLinearGradient(0,VIZ_BOTTOM,0,y);
-              g.addColorStop(0,"rgba(99,102,241,.85)"); g.addColorStop(.6,"rgba(167,139,250,.9)"); g.addColorStop(1,"rgba(255,255,255,.95)");
+              const barH = Math.max(freqData[Math.min(i * step, freqData.length - 1)] / 255 * VIZ_MAX_H, 2);
+              const x = BAR_GAP + i * (BAR_W + BAR_GAP), y = VIZ_BOTTOM - barH;
+              const g = ctx.createLinearGradient(0, VIZ_BOTTOM, 0, y);
+              g.addColorStop(0, "rgba(99,102,241,.85)"); g.addColorStop(.6, "rgba(167,139,250,.9)"); g.addColorStop(1, "rgba(255,255,255,.95)");
               ctx.fillStyle = g;
               ctx.beginPath();
-              const r = Math.min(3,BAR_W/2);
-              ctx.moveTo(x+r,y); ctx.lineTo(x+BAR_W-r,y);
-              ctx.quadraticCurveTo(x+BAR_W,y,x+BAR_W,y+r);
-              ctx.lineTo(x+BAR_W,VIZ_BOTTOM); ctx.lineTo(x,VIZ_BOTTOM); ctx.lineTo(x,y+r);
-              ctx.quadraticCurveTo(x,y,x+r,y); ctx.closePath(); ctx.fill();
+              const r = Math.min(3, BAR_W / 2);
+              ctx.moveTo(x + r, y); ctx.lineTo(x + BAR_W - r, y);
+              ctx.quadraticCurveTo(x + BAR_W, y, x + BAR_W, y + r);
+              ctx.lineTo(x + BAR_W, VIZ_BOTTOM); ctx.lineTo(x, VIZ_BOTTOM); ctx.lineTo(x, y + r);
+              ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath(); ctx.fill();
             }
 
             if (lyricLines.length > 0) {
-              const line = lyricLines[Math.min(Math.floor(elapsed/duration*lyricLines.length), lyricLines.length-1)];
+              const line = lyricLines[Math.min(Math.floor(elapsed / duration * lyricLines.length), lyricLines.length - 1)];
               ctx.font = "bold 36px 'Hiragino Sans','Noto Sans JP',sans-serif";
               ctx.textAlign = "center"; ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 10;
-              ctx.fillStyle = "white"; ctx.fillText(line,512,1000); ctx.shadowBlur = 0;
+              ctx.fillStyle = "white"; ctx.fillText(line, 512, 1000); ctx.shadowBlur = 0;
             }
 
-            if (elapsed >= duration) {
-              clearInterval(loop);
+            if (elapsed < duration) {
+              animFrame = requestAnimationFrame(tick);
+            } else {
+              // 録画終了
               audio.pause();
-              try { recorder.stop(); } catch { finish(); }
-              // onstop が発火しない場合のフォールバック
-              setTimeout(finish, 3000);
+              try { recorder.requestData(); } catch {}
+              setTimeout(() => {
+                try { recorder.stop(); } catch { finish(); }
+                setTimeout(finish, 5000); // onstop が来ない場合の最終フォールバック
+              }, 600); // 最後の ondataavailable を待つ
             }
-          }, 1000/24);
+          };
+
+          animFrame = requestAnimationFrame(tick);
+
+          // 曲全体のタイムアウト（duration + 15秒）
+          setTimeout(() => finish(), (duration + 15) * 1000);
+
         } catch(e) { reject(e); }
       };
       audio.onerror = () => reject(new Error("音声の読み込みに失敗しました"));
