@@ -7,8 +7,8 @@ import { openAppLink } from "@/lib/appLink";
 import { useFFmpeg } from "@/hooks/useFFmpeg";
 
 // ─── 型定義 ───────────────────────────────────────
-type Phase2Input  = { audioFile: File; audioObjectUrl: string; title: string; theme: string; lyrics: string };
-type Phase2Result = { imageUrl: string; videoBlob: Blob | null };
+type Phase2Result = { imageUrl: string; videoUrl: string | null };
+type ImgSource    = "generated" | "custom";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -86,7 +86,87 @@ function parseLyricLines(lyrics: string): string[] {
   return lyrics.split("\n").map(l=>l.trim()).filter(l=>l&&!/^\[.*\]$/.test(l));
 }
 
-// ─── ビジュアライザー付き動画生成 ─────────────────
+// ─── FFmpeg で波形付き動画を生成 ──────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function generateVideoWithFFmpeg(
+  ff: import("@ffmpeg/ffmpeg").FFmpeg,
+  imgSrc: { type: "url"; url: string } | { type: "file"; file: File },
+  audioFile: File,
+  onProgress: (p: number) => void
+): Promise<string> {
+  onProgress(0);
+
+  // ── 画像データ取得 ──────────────────────────────
+  let imageBytes: Uint8Array;
+  if (imgSrc.type === "url") {
+    // COEP 環境では直接 fetch 不可のためプロキシ経由
+    const res = await fetch(
+      `/api/music-gen/proxy-image?url=${encodeURIComponent(imgSrc.url)}`
+    );
+    if (!res.ok) throw new Error("画像の取得に失敗しました（proxy）");
+    imageBytes = new Uint8Array(await res.arrayBuffer());
+  } else {
+    imageBytes = new Uint8Array(await imgSrc.file.arrayBuffer());
+  }
+
+  // ── 音声データ取得 ──────────────────────────────
+  const audioBytes = new Uint8Array(await audioFile.arrayBuffer());
+  const audioExt   = (audioFile.name.split(".").pop() ?? "mp3").toLowerCase();
+  const audioIn    = `input.${audioExt}`;
+
+  // ── 仮想 FS に書き込み ──────────────────────────
+  await ff.writeFile("input.png", imageBytes);
+  await ff.writeFile(audioIn, audioBytes);
+
+  // ── エンコード進捗リスナー ──────────────────────
+  const onProg = ({ progress: p }: { progress: number }) =>
+    onProgress(Math.round(Math.min(p, 1) * 100));
+  ff.on("progress", onProg);
+
+  try {
+    // ── FFmpeg 実行 ──────────────────────────────
+    // 画像を 1024x1024 にスケール→波形を下部に overlay
+    await ff.exec([
+      "-loop",  "1",     "-i", "input.png",
+      "-i",     audioIn,
+      "-filter_complex",
+      // 画像を正方形に収めてパディング
+      "[0:v]scale=1024:1024:force_original_aspect_ratio=decrease," +
+      "pad=1024:1024:(ow-iw)/2:(oh-ih)/2:black[bg];" +
+      // 音声波形（1024x200、インジゴ系グラデーション）
+      "[1:a]showwaves=s=1024x200:mode=cline:colors=0x6366f1|0xa78bfa:scale=sqrt[waves];" +
+      // 波形を画像下部に重ねる（y=824 → 1024-200=824）
+      "[bg][waves]overlay=0:824",
+      "-c:v",   "libx264",
+      "-c:a",   "aac",
+      "-pix_fmt", "yuv420p",  // モバイル互換
+      "-crf",   "28",          // 品質（数値大＝軽量）
+      "-b:a",   "128k",
+      "-shortest",             // 音声が終わったら終了
+      "output.mp4",
+    ]);
+  } finally {
+    ff.off("progress", onProg);
+  }
+
+  // ── 結果読み出し ────────────────────────────────
+  const data = await ff.readFile("output.mp4");
+  const blob = new Blob(
+    [data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer)],
+    { type: "video/mp4" }
+  );
+  if (blob.size < 1000) throw new Error("動画の生成に失敗しました（出力が空です）");
+
+  // ── 仮想 FS クリーンアップ ──────────────────────
+  try { await ff.deleteFile("input.png"); } catch {}
+  try { await ff.deleteFile(audioIn);     } catch {}
+  try { await ff.deleteFile("output.mp4"); } catch {}
+
+  onProgress(100);
+  return URL.createObjectURL(blob);
+}
+
+// ─── (旧 canvas ベース実装は削除済み) ─────────────
 async function createVideoBlob(
   imageUrl: string, audioUrl: string, lyricLines: string[],
   onProgress: (msg: string) => void
@@ -543,7 +623,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
 // ─── メインページ ─────────────────────────────────
 function MusicGenContent() {
   const searchParams = useSearchParams();
-  const { status: ffStatus, load: loadFFmpeg } = useFFmpeg();
+  const { status: ffStatus, encodeProgress, setEncodeProgress, load: loadFFmpeg } = useFFmpeg();
 
   // Phase 1
   const [builtPrompt, setBuiltPrompt] = useState("");
@@ -556,6 +636,12 @@ function MusicGenContent() {
   const [lyrics,     setLyrics]     = useState("");
   const [audioDrag,  setAudioDrag]  = useState(false);
   const audioObjRef = useRef<string | null>(null);
+
+  // Phase 2 画像ソース
+  const [imgSource,     setImgSource]     = useState<ImgSource>("generated");
+  const [customImgFile, setCustomImgFile] = useState<File | null>(null);
+  const [customImgUrl,  setCustomImgUrl]  = useState<string | null>(null);
+  const [imgDrag,       setImgDrag]       = useState(false);
 
   // Phase 2 result
   const [phase2Result, setPhase2Result] = useState<Phase2Result | null>(null);
@@ -573,7 +659,10 @@ function MusicGenContent() {
 
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => { if (audioObjRef.current) URL.revokeObjectURL(audioObjRef.current); }, []);
+  useEffect(() => () => {
+    if (audioObjRef.current) URL.revokeObjectURL(audioObjRef.current);
+    if (customImgUrl) URL.revokeObjectURL(customImgUrl);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (searchParams.get("youtube_connected") === "1") setYtConnected(true);
@@ -601,21 +690,56 @@ function MusicGenContent() {
     if (f?.type.startsWith("audio/")) applyAudio(f);
   }, [applyAudio]);
 
-  // Phase 2: 画像 + 動画生成
-  const runPhase2 = async () => {
-    if (!audioFile || !audioObjRef.current || !title.trim()) return;
-    setStep2Loading(true); setError(null); setPhase2Result(null);
-    setStep2Status("DALL-E 3 でジャケット画像を生成中...");
-    try {
-      const iRes  = await fetch("/api/music-gen/image",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({image_prompt:theme||builtPrompt||title,title})});
-      const iData = await iRes.json();
-      if (iData.error) throw new Error(iData.error);
+  const applyCustomImg = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    if (customImgUrl) URL.revokeObjectURL(customImgUrl);
+    setCustomImgUrl(URL.createObjectURL(file));
+    setCustomImgFile(file);
+  }, [customImgUrl]);
 
-      setStep2Status("ブラウザで動画を生成中（曲の長さ分かかります）...");
-      const videoBlob = await createVideoBlob(iData.url, audioObjRef.current, parseLyricLines(lyrics), setStep2Status);
-      setPhase2Result({ imageUrl: iData.url, videoBlob });
+  // Phase 2: 画像 + FFmpeg 動画生成
+  const runPhase2 = async () => {
+    if (!audioFile || !title.trim()) return;
+    if (imgSource === "custom" && !customImgFile) {
+      setError("カスタム画像を選択してください"); return;
+    }
+    setStep2Loading(true); setError(null); setPhase2Result(null); setEncodeProgress(0);
+    try {
+      // ── Step 1: 画像を準備 ──────────────────────
+      let imageUrl: string;
+      if (imgSource === "generated") {
+        setStep2Status("DALL-E 3 でジャケット画像を生成中...");
+        const iRes  = await fetch("/api/music-gen/image", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_prompt: theme || builtPrompt || title, title }),
+        });
+        const iData = await iRes.json();
+        if (iData.error) throw new Error(iData.error);
+        imageUrl = iData.url;
+      } else {
+        imageUrl = customImgUrl!; // カスタム画像のプレビュー URL（表示用）
+      }
+
+      // ── Step 2: FFmpeg をロード ──────────────────
+      setStep2Status("FFmpeg をロード中...");
+      const ff = await loadFFmpeg();
+
+      // ── Step 3: FFmpeg で動画生成 ────────────────
+      const imgSrcArg = imgSource === "generated"
+        ? { type: "url"  as const, url: imageUrl }
+        : { type: "file" as const, file: customImgFile! };
+
+      const videoUrl = await generateVideoWithFFmpeg(
+        ff, imgSrcArg, audioFile,
+        (p) => {
+          setEncodeProgress(p);
+          setStep2Status(p < 100 ? `FFmpeg エンコード中... ${p}%` : "✅ 動画生成完了");
+        }
+      );
+
+      setPhase2Result({ imageUrl, videoUrl });
       setStep2Status("✅ 動画生成完了");
-    } catch(e) {
+    } catch (e) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
       setStep2Status("");
     } finally { setStep2Loading(false); }
@@ -623,11 +747,12 @@ function MusicGenContent() {
 
   // Phase 3: YouTube
   const runYouTube = async () => {
-    if (!phase2Result?.videoBlob) return;
+    if (!phase2Result?.videoUrl) return;
     setYtLoading(true); setError(null);
     try {
+      const videoBlob = await fetch(phase2Result.videoUrl).then(r => r.blob());
       const form = new FormData();
-      form.append("video", phase2Result.videoBlob, "music.webm");
+      form.append("video", videoBlob, "music.mp4");
       form.append("title", title); form.append("description", theme); form.append("privacy", privacy);
       const data = await fetch("/api/music-gen/youtube/upload",{method:"POST",body:form}).then(r=>r.json());
       if (data.error) throw new Error(data.error);
@@ -739,29 +864,89 @@ function MusicGenContent() {
                 className="w-full resize-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
             </div>
 
-            {/* FFmpeg ステータス */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-gray-400 dark:text-gray-500">FFmpeg (音声合成):</span>
-              {ffStatus === "idle"    && <button onClick={loadFFmpeg} className="text-indigo-500 hover:underline">ロード</button>}
-              {ffStatus === "loading" && <span className="flex items-center gap-1 text-amber-500"><Spinner color="text-amber-500" />Loading...</span>}
-              {ffStatus === "ready"   && <span className="text-emerald-500">✓ Ready</span>}
-              {ffStatus === "error"   && <span className="text-red-500">✗ 失敗（CDN に接続できません）</span>}
+            {/* ── 画像ソース選択 ── */}
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-3">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">動画に使用する画像</p>
+              <div className="flex gap-3">
+                {(["generated", "custom"] as ImgSource[]).map(src => (
+                  <button key={src} onClick={() => setImgSource(src)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                      imgSource === src
+                        ? "bg-indigo-600 border-indigo-500 text-white"
+                        : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300"
+                    }`}>
+                    {src === "generated" ? "🎨 AI生成（DALL-E 3）" : "📁 カスタムアップロード"}
+                  </button>
+                ))}
+              </div>
+
+              {imgSource === "custom" && (
+                <div
+                  onDragOver={e => { e.preventDefault(); setImgDrag(true); }}
+                  onDragLeave={() => setImgDrag(false)}
+                  onDrop={e => { e.preventDefault(); setImgDrag(false); const f = e.dataTransfer.files[0]; if (f) applyCustomImg(f); }}
+                  className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 text-center transition-colors cursor-pointer ${
+                    imgDrag ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                  }`}
+                  onClick={() => document.getElementById("custom-img-input")?.click()}
+                >
+                  {customImgUrl
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={customImgUrl} alt="custom" className="w-32 h-32 object-cover rounded-lg" />
+                    : <><span className="text-2xl">🖼</span><p className="text-xs text-gray-400">画像をドロップ またはクリックして選択</p></>
+                  }
+                  <input id="custom-img-input" type="file" accept="image/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) applyCustomImg(f); }} />
+                </div>
+              )}
             </div>
 
-            <button onClick={runPhase2} disabled={!canGenerate||step2Loading}
+            {/* ── FFmpeg ステータス ── */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400 dark:text-gray-500">FFmpeg:</span>
+              {ffStatus === "idle"    && <button onClick={loadFFmpeg} className="text-indigo-500 hover:underline font-semibold">事前ロード</button>}
+              {ffStatus === "loading" && <span className="flex items-center gap-1 text-amber-500"><Spinner color="text-amber-500" />Loading...</span>}
+              {ffStatus === "ready"   && <span className="text-emerald-500 font-semibold">✓ Ready</span>}
+              {ffStatus === "error"   && <span className="text-red-500">✗ 失敗（CDN に接続できません）</span>}
+              <span className="text-gray-300 dark:text-gray-700 ml-auto">生成ボタンを押すと自動でロードされます</span>
+            </div>
+
+            <button
+              onClick={runPhase2}
+              disabled={!canGenerate || step2Loading || (imgSource === "custom" && !customImgFile)}
               className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
               {step2Loading ? <><Spinner />生成中...</> : "▶ 画像・動画を生成"}
             </button>
-            {step2Status && <p className="text-xs text-gray-500 dark:text-gray-400">{step2Status}</p>}
+
+            {/* ── 進捗バー ── */}
+            {step2Loading && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                  <span>{step2Status}</span>
+                  {encodeProgress > 0 && <span>{encodeProgress}%</span>}
+                </div>
+                {encodeProgress > 0 && (
+                  <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                      style={{ width: `${encodeProgress}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            {!step2Loading && step2Status && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">{step2Status}</p>
+            )}
 
             {phase2Result && (
               <div className="flex flex-col gap-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={phase2Result.imageUrl} alt="jacket" className="w-full max-w-xs rounded-xl shadow mx-auto" />
-                {phase2Result.videoBlob && (
+                {phase2Result.videoUrl && (
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">生成された動画</p>
-                    <video controls className="w-full rounded-xl" src={URL.createObjectURL(phase2Result.videoBlob)} />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">生成された動画（音声付き MP4）</p>
+                    <video controls className="w-full rounded-xl" src={phase2Result.videoUrl} />
                   </div>
                 )}
               </div>
@@ -789,10 +974,10 @@ function MusicGenContent() {
                     🖼 ジャケット
                   </a>
                 )}
-                {phase2Result?.videoBlob && (
-                  <a href={URL.createObjectURL(phase2Result.videoBlob)} download="music_video.webm"
+                {phase2Result?.videoUrl && (
+                  <a href={phase2Result.videoUrl} download="music_video.mp4"
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                    🎬 動画
+                    🎬 動画 (MP4)
                   </a>
                 )}
               </div>
@@ -819,7 +1004,7 @@ function MusicGenContent() {
                       );
                     })}
                   </div>
-                  <button onClick={runYouTube} disabled={!phase2Result?.videoBlob||ytLoading}
+                  <button onClick={runYouTube} disabled={!phase2Result?.videoUrl||ytLoading}
                     className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
                     {ytLoading?<><Spinner/>アップロード中...</>:"▶ YouTube にアップロード"}
                   </button>

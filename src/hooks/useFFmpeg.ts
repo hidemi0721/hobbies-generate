@@ -10,25 +10,18 @@ export type FFmpegStatus = "idle" | "loading" | "ready" | "error";
 
 export function useFFmpeg() {
   const ffmpegRef = useRef<FFmpeg | null>(null);
-  const [status, setStatus]   = useState<FFmpegStatus>("idle");
-  const [progress, setProgress] = useState(0);
+  const [status,         setStatus]         = useState<FFmpegStatus>("idle");
+  const [encodeProgress, setEncodeProgress] = useState(0);
 
-  const load = useCallback(async () => {
-    if (ffmpegRef.current) return ffmpegRef.current; // 既にロード済み
+  const load = useCallback(async (): Promise<FFmpeg> => {
+    if (ffmpegRef.current) return ffmpegRef.current;
     setStatus("loading");
-    setProgress(0);
     try {
       const ffmpeg = new FFmpeg();
-
-      ffmpeg.on("progress", ({ progress: p }) => {
-        setProgress(Math.round(p * 100));
-      });
-
       await ffmpeg.load({
-        coreURL:   await toBlobURL(`${CDN}/ffmpeg-core.js`,   "text/javascript"),
-        wasmURL:   await toBlobURL(`${CDN}/ffmpeg-core.wasm`, "application/wasm"),
+        coreURL: await toBlobURL(`${CDN}/ffmpeg-core.js`,   "text/javascript"),
+        wasmURL: await toBlobURL(`${CDN}/ffmpeg-core.wasm`, "application/wasm"),
       });
-
       ffmpegRef.current = ffmpeg;
       setStatus("ready");
       return ffmpeg;
@@ -40,9 +33,10 @@ export function useFFmpeg() {
   }, []);
 
   return {
-    ffmpeg:   ffmpegRef.current,
+    ffmpeg:  ffmpegRef.current,
     status,
-    progress,
+    encodeProgress,
+    setEncodeProgress,
     isLoading: status === "loading",
     isReady:   status === "ready",
     load,
