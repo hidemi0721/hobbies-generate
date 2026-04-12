@@ -12,7 +12,8 @@ type AppLinkConfig = {
 const APP_LINKS: Record<string, AppLinkConfig> = {
   "suno.com": {
     webUrl: "https://suno.com",
-    // Suno はモバイルアプリなし → ブラウザで開く
+    iosScheme: "suno://", // iOS アプリあり
+    // Android アプリは未確認のため未設定
   },
   "youtube.com": {
     webUrl: "https://youtube.com",
