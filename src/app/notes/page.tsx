@@ -17,6 +17,7 @@ export default function NotesPage() {
   const [loading,     setLoading]     = useState(true);
   const [saving,      setSaving]      = useState(false);
   const [showList,    setShowList]    = useState(true); // モバイル用切り替え
+  const [createError, setCreateError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selected = notes.find(n => n.id === selectedId) ?? null;
@@ -34,16 +35,23 @@ export default function NotesPage() {
 
   // ─── 新規作成 ──────────────────────────────────────
   const createNote = async () => {
-    const res  = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "新しいメモ", content: "" }),
-    });
-    const data = await res.json();
-    if (data.note) {
-      setNotes(prev => [data.note, ...prev]);
-      setSelectedId(data.note.id);
-      setShowList(false);
+    setCreateError(null);
+    try {
+      const res  = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "新しいメモ", content: "" }),
+      });
+      const data = await res.json();
+      if (data.note) {
+        setNotes(prev => [data.note, ...prev]);
+        setSelectedId(data.note.id);
+        setShowList(false);
+      } else {
+        setCreateError(data.error ?? "作成に失敗しました");
+      }
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "作成に失敗しました");
     }
   };
 
@@ -106,6 +114,14 @@ export default function NotesPage() {
             新規
           </button>
         </div>
+
+        {/* エラー表示 */}
+        {createError && (
+          <div className="mx-3 mt-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs flex items-start gap-1.5">
+            <span className="flex-1">{createError}</span>
+            <button onClick={() => setCreateError(null)} className="shrink-0 text-red-400 hover:text-red-600">✕</button>
+          </div>
+        )}
 
         {/* リスト */}
         <div className="flex-1 overflow-y-auto">

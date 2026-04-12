@@ -19,7 +19,7 @@ type DnaMode = "dynamic" | "static";
 type DnaCatKey = "genre" | "inst" | "atm" | "rhythm";
 
 const FIXED_VOCAL = "Transparent breathy female vocals, whispery, fragile";
-const FIXED_WORLD = "Nostalgic, lonely, melancholic, cinematic atmosphere";
+const FIXED_WORLD = "Nostalgic, lonely, melancholic";
 
 const MODE_PRIORITY: Record<DnaMode, string[]> = {
   dynamic: ["Progressive House", "Complextro", "Kawaii Future Bass", "Technical Rock/Guitar"],
@@ -35,8 +35,8 @@ const INIT_INST: Record<DnaMode, string[]> = {
   static:  ["Felt Piano", "Environmental Noise", "Acoustic Guitar"],
 };
 const INIT_ATM: Record<DnaMode, string[]> = {
-  dynamic: ["Analog Warmth", "Drive", "Electric Crackle", "Euphoric"],
-  static:  ["Vinyl Crackle", "Deep Reverb", "Bittersweet", "Fragile"],
+  dynamic: ["Cinematic Atmosphere", "Analog Warmth", "Drive", "Electric Crackle", "Euphoric"],
+  static:  ["Cinematic Atmosphere", "Vinyl Crackle", "Deep Reverb", "Bittersweet", "Fragile"],
 };
 const INIT_RHYTHM = ["Swing", "Double-time"];
 
@@ -90,6 +90,13 @@ async function createVideoBlob(
   imageUrl: string, audioUrl: string, lyricLines: string[],
   onProgress: (msg: string) => void
 ): Promise<Blob> {
+  // canvas.captureStream / MediaRecorder は iOS Safari 非対応
+  const testCanvas = document.createElement("canvas");
+  if (typeof (testCanvas as HTMLCanvasElement & { captureStream?: () => MediaStream }).captureStream !== "function"
+      || typeof window.MediaRecorder === "undefined") {
+    throw new Error("お使いのブラウザは動画生成に対応していません。PCのChromeまたはFirefoxをご利用ください。");
+  }
+
   return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
     canvas.width = 1024; canvas.height = 1024;
