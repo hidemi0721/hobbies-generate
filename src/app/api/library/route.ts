@@ -1,11 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export async function GET(req: NextRequest) {
   const authError = checkAuth(req);
@@ -15,14 +11,14 @@ export async function GET(req: NextRequest) {
 
   try {
     // Sketch Generator の既存データ
-    const sketchQuery = supabase
+    const sketchQuery = getSupabase()
       .from("rough_generations")
       .select("id, prompt, original_image_url, generated_images_urls, created_at")
       .order("created_at", { ascending: false })
       .limit(100);
 
     // その他ツールの保存データ
-    let libQuery = supabase
+    let libQuery = getSupabase()
       .from("library_items")
       .select("id, tool, title, image_url, extra_urls, metadata, created_at")
       .order("created_at", { ascending: false })

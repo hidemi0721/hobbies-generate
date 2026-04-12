@@ -1,22 +1,18 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 
 export const maxRequestBodySize = "50mb";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const BUCKET = "sketch-generations";
 
 async function uploadToStorage(buf: Buffer, path: string, contentType: string): Promise<string> {
-  const { error } = await supabase.storage
+  const { error } = await getSupabase().storage
     .from(BUCKET)
     .upload(path, buf, { contentType, upsert: false });
   if (error) throw new Error(error.message);
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  const { data } = getSupabase().storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
 
@@ -63,7 +59,7 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    const { error } = await supabase.from("rough_generations").insert({
+    const { error } = await getSupabase().from("rough_generations").insert({
       original_image_url: originalImageUrl,
       prompt,
       generated_images_urls: persistedUrls,

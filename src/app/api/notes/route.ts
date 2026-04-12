@@ -1,18 +1,14 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export async function GET(req: NextRequest) {
   const authError = checkAuth(req);
   if (authError) return authError;
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from("notes")
       .select("id, title, content, pinned, created_at, updated_at")
       .order("pinned", { ascending: false })
@@ -33,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { title, content } = await req.json();
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from("notes")
       .insert({ title: title ?? "", content: content ?? "" })
       .select()

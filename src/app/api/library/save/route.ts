@@ -1,13 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 
 export const maxRequestBodySize = "20mb";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 const BUCKET = "library";
 
@@ -15,9 +11,9 @@ async function uploadDataUrl(dataUrl: string, path: string): Promise<string> {
   const [header, b64] = dataUrl.split(",");
   const mime = header.match(/data:([^;]+);/)?.[1] ?? "image/png";
   const buf  = Buffer.from(b64, "base64");
-  const { error } = await supabase.storage.from(BUCKET).upload(path, buf, { contentType: mime, upsert: false });
+  const { error } = await getSupabase().storage.from(BUCKET).upload(path, buf, { contentType: mime, upsert: false });
   if (error) throw new Error(error.message);
-  return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  return getSupabase().storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
 async function fetchAndUpload(url: string, path: string): Promise<string> {
@@ -50,7 +46,7 @@ export async function POST(req: NextRequest) {
       )
     );
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from("library_items")
       .insert({
         tool,

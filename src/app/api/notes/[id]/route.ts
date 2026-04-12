@@ -1,11 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabase";
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authError = checkAuth(req);
@@ -19,7 +15,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if ("content" in body) updates.content = body.content;
     if ("pinned"  in body) updates.pinned  = body.pinned;
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from("notes")
       .update(updates)
       .eq("id", id)
@@ -40,7 +36,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params;
   try {
-    const { error } = await supabase.from("notes").delete().eq("id", id);
+    const { error } = await getSupabase().from("notes").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
   } catch (e) {
