@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { openAppLink } from "@/lib/appLink";
+import { useFFmpeg } from "@/hooks/useFFmpeg";
 
 // ─── 型定義 ───────────────────────────────────────
 type Phase2Input  = { audioFile: File; audioObjectUrl: string; title: string; theme: string; lyrics: string };
@@ -542,6 +543,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
 // ─── メインページ ─────────────────────────────────
 function MusicGenContent() {
   const searchParams = useSearchParams();
+  const { status: ffStatus, load: loadFFmpeg } = useFFmpeg();
 
   // Phase 1
   const [builtPrompt, setBuiltPrompt] = useState("");
@@ -735,6 +737,15 @@ function MusicGenContent() {
               <textarea value={lyrics} onChange={e=>setLyrics(e.target.value)} rows={4}
                 placeholder={"[Verse]\n夜が来るたびに...\n\n[Chorus]\n輝く星よ..."}
                 className="w-full resize-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-mono text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-indigo-500" />
+            </div>
+
+            {/* FFmpeg ステータス */}
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400 dark:text-gray-500">FFmpeg (音声合成):</span>
+              {ffStatus === "idle"    && <button onClick={loadFFmpeg} className="text-indigo-500 hover:underline">ロード</button>}
+              {ffStatus === "loading" && <span className="flex items-center gap-1 text-amber-500"><Spinner color="text-amber-500" />Loading...</span>}
+              {ffStatus === "ready"   && <span className="text-emerald-500">✓ Ready</span>}
+              {ffStatus === "error"   && <span className="text-red-500">✗ 失敗（CDN に接続できません）</span>}
             </div>
 
             <button onClick={runPhase2} disabled={!canGenerate||step2Loading}
