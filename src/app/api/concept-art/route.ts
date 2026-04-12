@@ -100,23 +100,18 @@ async function applyCoolCorrection(b64: string, skip: boolean): Promise<string> 
   return `data:image/png;base64,${corrected.toString("base64")}`;
 }
 
-async function generate(imageBuf: Buffer, prompt: string, skipCoolCorrection = false): Promise<string | null> {
-  try {
-    const file = await toFile(imageBuf, "photo.png", { type: "image/png" });
-    const res = await openai.images.edit({
-      model: "gpt-image-1",
-      image: file,
-      prompt,
-      n: 1,
-      size: "1024x1024",
-    });
-    const b64 = res.data?.[0]?.b64_json;
-    if (!b64) return null;
-    return applyCoolCorrection(b64, skipCoolCorrection);
-  } catch (e) {
-    console.error("[concept-art generate error]", e);
-    return null;
-  }
+async function generate(imageBuf: Buffer, prompt: string, skipCoolCorrection = false): Promise<string> {
+  const file = await toFile(imageBuf, "photo.png", { type: "image/png" });
+  const res = await openai.images.edit({
+    model: "gpt-image-1",
+    image: file,
+    prompt,
+    n: 1,
+    size: "1024x1024",
+  });
+  const b64 = res.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI returned no image data");
+  return applyCoolCorrection(b64, skipCoolCorrection);
 }
 
 export async function POST(req: NextRequest) {
@@ -152,18 +147,23 @@ export async function POST(req: NextRequest) {
       const results = await Promise.all(
         LAYER_CONFIGS.map(async (cfg) => {
           const prompt = BASE_PROMPT + " " + cfg.instruction + styleSuffix;
-          const url = await generate(imageBuf, prompt, skipCool);
-          return { key: cfg.key, label: cfg.label, url };
+          try {
+            const url = await generate(imageBuf, prompt, skipCool);
+            return { key: cfg.key, label: cfg.label, url };
+          } catch (e) {
+            console.error(`[concept-art layer ${cfg.key}]`, e);
+            return { key: cfg.key, label: cfg.label, url: null };
+          }
         })
       );
       return NextResponse.json({ layers: results });
     }
 
     const url = await generate(imageBuf, BASE_PROMPT + styleSuffix, skipCool);
-    if (!url) return NextResponse.json({ error: "Generation failed" }, { status: 500 });
     return NextResponse.json({ url });
   } catch (e) {
     console.error("[concept-art]", e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Unknown error" }, { status: 500 });
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
