@@ -687,7 +687,10 @@ function MusicGenContent() {
   const onAudioDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setAudioDrag(false);
     const f = e.dataTransfer.files[0];
-    if (f?.type.startsWith("audio/")) applyAudio(f);
+    if (!f) return;
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    const isAudio = f.type.startsWith("audio/") || ["mp3","wav","m4a","aac","ogg","flac"].includes(ext);
+    if (isAudio) applyAudio(f);
   }, [applyAudio]);
 
   const applyCustomImg = useCallback((file: File) => {
