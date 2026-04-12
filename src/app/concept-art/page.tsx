@@ -70,7 +70,7 @@ export default function ConceptArtPage() {
         setImageMediaType(mediaType);
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "画像の読み込みに失敗しました");
+        setError(`[画像] ${e instanceof Error ? e.message : "画像の読み込みに失敗しました"}`);
         setPreviewUrl(null);
       });
   }, []);
