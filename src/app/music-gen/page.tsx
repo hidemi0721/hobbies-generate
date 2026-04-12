@@ -101,6 +101,9 @@ async function createVideoBlob(
       if (!audioUrl.startsWith("blob:")) audio.crossOrigin = "anonymous";
       audio.onloadedmetadata = () => {
         const duration = audio.duration;
+        if (!duration || !isFinite(duration)) {
+          reject(new Error("音声の長さを取得できませんでした。別のファイルを試してください。")); return;
+        }
         onProgress("録画準備中...");
         try {
           const audioCtx = new AudioContext();
@@ -115,12 +118,26 @@ async function createVideoBlob(
             ...canvas.captureStream(24).getVideoTracks(),
             ...dest.stream.getAudioTracks(),
           ]);
-          const recorder = new MediaRecorder(combined, { mimeType: "video/webm;codecs=vp8,opus" });
+
+          // iOS Safari は webm 非対応のため対応フォーマットを自動選択
+          const mimeType = ["video/webm;codecs=vp8,opus","video/webm","video/mp4",""].find(
+            t => t === "" || MediaRecorder.isTypeSupported(t)
+          ) ?? "";
+
+          const recorder = new MediaRecorder(combined, mimeType ? { mimeType } : {});
           const chunks: BlobPart[] = [];
+          let resolved = false;
+
+          const finish = () => {
+            if (resolved) return;
+            resolved = true;
+            resolve(new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" }));
+          };
+
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => resolve(new Blob(chunks, { type: "video/webm" }));
+          recorder.onstop = finish;
           recorder.start(1000);
-          audio.play();
+          audio.play().catch(() => { /* autoplay blocked は無視して続行 */ });
 
           const startTime = Date.now();
           const BAR_COUNT = 64, BAR_GAP = 3;
@@ -160,7 +177,13 @@ async function createVideoBlob(
               ctx.fillStyle = "white"; ctx.fillText(line,512,1000); ctx.shadowBlur = 0;
             }
 
-            if (elapsed >= duration) { clearInterval(loop); recorder.stop(); audio.pause(); }
+            if (elapsed >= duration) {
+              clearInterval(loop);
+              audio.pause();
+              try { recorder.stop(); } catch { finish(); }
+              // onstop が発火しない場合のフォールバック
+              setTimeout(finish, 3000);
+            }
           }, 1000/24);
         } catch(e) { reject(e); }
       };

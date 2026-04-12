@@ -95,8 +95,8 @@ export default function NotesPage() {
         w-full sm:w-72 lg:w-80 shrink-0
         ${showList ? "flex" : "hidden sm:flex"}
       `}>
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-gray-100 dark:border-gray-800">
+        {/* ヘッダー：モバイルは右上ハンバーガーを避けるため pr-14 */}
+        <div className="flex items-center justify-between px-4 pr-14 sm:pr-4 py-4 border-b border-gray-100 dark:border-gray-800">
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">メモ</h1>
           <button onClick={createNote}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors">
@@ -157,7 +157,7 @@ export default function NotesPage() {
         {selected ? (
           <>
             {/* エディターヘッダー */}
-            <div className="flex items-center gap-2 px-4 sm:px-6 py-3 border-b border-gray-100 dark:border-gray-800">
+            <div className="flex items-center gap-2 px-4 sm:px-6 pr-14 sm:pr-6 py-3 border-b border-gray-100 dark:border-gray-800">
               {/* モバイル：リストに戻る */}
               <button onClick={() => setShowList(true)}
                 className="sm:hidden p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
