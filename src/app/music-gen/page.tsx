@@ -34,7 +34,10 @@ const INIT_INST: Record<DnaMode, string[]> = {
   dynamic: ["Technical Distorted Guitar", "808 Bass", "Arpeggio Synths"],
   static:  ["Felt Piano", "Environmental Noise", "Acoustic Guitar"],
 };
-const INIT_ATM    = ["Vinyl Crackle", "Deep Reverb", "Bittersweet", "Fragile"];
+const INIT_ATM: Record<DnaMode, string[]> = {
+  dynamic: ["Analog Warmth", "Drive", "Electric Crackle", "Euphoric"],
+  static:  ["Vinyl Crackle", "Deep Reverb", "Bittersweet", "Fragile"],
+};
 const INIT_RHYTHM = ["Swing", "Double-time"];
 
 type DnaState = {
@@ -60,7 +63,7 @@ function initDna(mode: DnaMode): DnaState {
     },
     genre:  makeTags(INIT_GENRE[mode]),
     inst:   makeTags(INIT_INST[mode]),
-    atm:    makeTags(INIT_ATM),
+    atm:    makeTags(INIT_ATM[mode]),
     rhythm: makeTags(INIT_RHYTHM),
   };
 }
@@ -202,7 +205,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
   }, [dna, onPromptChange]);
 
   const switchMode = (m: DnaMode) => setDna(p => p && p.mode !== m
-    ? { ...p, mode: m, genre: makeTags(INIT_GENRE[m]), inst: makeTags(INIT_INST[m]) }
+    ? { ...p, mode: m, genre: makeTags(INIT_GENRE[m]), inst: makeTags(INIT_INST[m]), atm: makeTags(INIT_ATM[m]) }
     : p
   );
 
@@ -334,10 +337,10 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
         </div>
         <div className="flex flex-wrap gap-1.5 mb-2.5">
           {dna.priority[dna.mode].map(tag => (
-            <div key={tag.id} className="relative group/ptag">
+            <div key={tag.id} className="relative flex items-center">
               <button
                 onClick={() => togglePriority(tag.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs border transition-all select-none ${
+                className={`pl-2.5 pr-6 py-1 rounded-lg text-xs border transition-all select-none ${
                   tag.selected
                     ? dna.mode === "dynamic"
                       ? "bg-orange-500 border-orange-400 text-white shadow-sm"
@@ -347,7 +350,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
               >{tag.text}</button>
               <button
                 onClick={() => delPriority(tag.id)}
-                className="absolute -top-1.5 -right-1.5 hidden group-hover/ptag:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none z-10"
+                className="absolute right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/20 hover:bg-red-500 text-white text-[9px] font-bold leading-none transition-colors"
               >×</button>
             </div>
           ))}
@@ -393,10 +396,10 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
           {/* タグ */}
           <div className="flex flex-wrap gap-1.5 mb-2.5">
             {dna[key].map(tag => (
-              <div key={tag.id} className="relative group/tag">
+              <div key={tag.id} className="relative flex items-center">
                 <button
                   onClick={() => toggleTag(key, tag.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all select-none ${
+                  className={`pl-3 pr-7 py-1.5 rounded-lg text-xs font-medium border transition-all select-none ${
                     tag.selected
                       ? dna.mode === "dynamic"
                         ? "bg-orange-500 border-orange-400 text-white shadow-sm"
@@ -406,7 +409,7 @@ function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => 
                 >{tag.text}</button>
                 <button
                   onClick={() => delTag(key, tag.id)}
-                  className="absolute -top-1.5 -right-1.5 hidden group-hover/tag:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none z-10"
+                  className="absolute right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/20 hover:bg-red-500 text-white text-[9px] font-bold leading-none transition-colors"
                 >×</button>
               </div>
             ))}
