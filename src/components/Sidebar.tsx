@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portal",            emoji: "🏠" },
@@ -20,16 +20,33 @@ const UTILITY_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
 
   const close = () => setOpen(false);
 
+  const toggleTheme = () => {
+    const next = !dark;
+    setDark(next);
+    if (next) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  };
+
   return (
     <>
-      {/* ── モバイル ハンバーガーボタン ── */}
+      {/* ── モバイル ハンバーガーボタン（右） ── */}
       <button
         onClick={() => setOpen(true)}
         aria-label="メニューを開く"
-        className="lg:hidden fixed top-4 left-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md dark:border-gray-700 dark:bg-gray-800"
+        className="lg:hidden fixed top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md dark:border-gray-700 dark:bg-gray-800"
       >
         <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -44,16 +61,18 @@ export function Sidebar() {
         />
       )}
 
-      {/* ── サイドバー本体 ── */}
+      {/* ── サイドバー本体（モバイルは右から） ── */}
       <aside
         className={`
-          fixed lg:sticky top-0 left-0 z-40
+          fixed lg:sticky top-0 z-40
           h-screen w-56 shrink-0
           flex flex-col overflow-hidden
           bg-white dark:bg-gray-900
-          border-r border-gray-200 dark:border-gray-800
+          border-gray-200 dark:border-gray-800
           transition-transform duration-200
-          ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          right-0 lg:left-0 lg:right-auto
+          border-l lg:border-l-0 lg:border-r
+          ${open ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
         `}
       >
         {/* ヘッダー */}
@@ -133,7 +152,25 @@ export function Sidebar() {
         </nav>
 
         {/* フッター */}
-        <div className="p-4 border-t border-gray-100 dark:border-gray-800">
+        <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-3">
+          {/* ダークモード切替（モバイルのみ表示） */}
+          <button
+            onClick={toggleTheme}
+            aria-label="テーマ切り替え"
+            className="lg:hidden flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors w-full"
+          >
+            {dark ? (
+              <svg className="h-5 w-5 text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="5" />
+                <path strokeLinecap="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+              </svg>
+            )}
+            <span>{dark ? "ライトモード" : "ダークモード"}</span>
+          </button>
           <p className="text-[10px] text-gray-300 dark:text-gray-700 text-center">
             Built with Next.js · Claude · OpenAI
           </p>
