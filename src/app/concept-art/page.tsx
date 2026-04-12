@@ -86,14 +86,20 @@ export default function ConceptArtPage() {
     setter(true); setError(null);
     if (mode === "single") setResult(null); else setLayers(null);
     try {
-      const res  = await fetch("/api/concept-art", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, imageMediaType, selections, mode }),
-      });
+      let res: Response;
+      try {
+        res = await fetch("/api/concept-art", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64, imageMediaType, selections, mode }),
+        });
+      } catch (e) {
+        setError(`[ネットワーク] ${e instanceof Error ? e.message : "通信エラー"}`);
+        return;
+      }
       const data = await res.json();
-      if (data.error) { setError(data.error); return; }
+      if (data.error) { setError(`[API] ${data.error}`); return; }
       if (mode === "single") setResult(data.url); else setLayers(data.layers);
-    } catch (e) { setError(e instanceof Error ? e.message : "Unexpected error"); }
+    } catch (e) { setError(`[Parse] ${e instanceof Error ? e.message : "Unexpected error"}`); }
     finally { setter(false); }
   };
 

@@ -106,8 +106,6 @@ async function generate(imageBuf: Buffer, prompt: string, skipCoolCorrection = f
     model: "gpt-image-1",
     image: file,
     prompt,
-    n: 1,
-    size: "1024x1024",
   });
   const b64 = res.data?.[0]?.b64_json;
   if (!b64) throw new Error("OpenAI returned no image data");
