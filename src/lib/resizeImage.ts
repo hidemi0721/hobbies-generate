@@ -1,24 +1,27 @@
 /**
  * 画像ファイルをブラウザ上でリサイズしてbase64に変換する
- * スマホカメラの大容量写真をAPIに送る前に圧縮する
- * canvasが失敗した場合 (HEICなど) はFileReaderでraw base64にフォールバック
+ * iOS Safariで大容量画像がcanvasで失敗する場合、小さいサイズで再試行する
  */
 
-/** FileReader で生のbase64を取得（canvasフォールバック用） */
-function readAsBase64(file: File): Promise<{ base64: string; mediaType: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const comma = dataUrl.indexOf(",");
-      if (comma === -1) { reject(new Error("FileReader: invalid data URL")); return; }
-      const base64 = dataUrl.slice(comma + 1);
-      const mediaType = file.type || "image/jpeg";
-      resolve({ base64, mediaType });
-    };
-    reader.onerror = () => reject(new Error("FileReader failed"));
-    reader.readAsDataURL(file);
-  });
+function tryCanvas(img: HTMLImageElement, maxPx: number, quality: number): string | null {
+  const { width, height } = img;
+  const scale = Math.min(1, maxPx / Math.max(width, height));
+  const w = Math.round(width  * scale);
+  const h = Math.round(height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.drawImage(img, 0, 0, w, h);
+
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  const base64 = dataUrl.split(",")[1];
+  // canvas が空/不正な場合 (iOS大容量画像など) は null を返す
+  if (!base64 || base64.length < 500) return null;
+  return base64;
 }
 
 export async function resizeImage(
@@ -32,37 +35,29 @@ export async function resizeImage(
 
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
-      const { width, height } = img;
-      const scale = Math.min(1, maxPx / Math.max(width, height));
-      const w = Math.round(width  * scale);
-      const h = Math.round(height * scale);
 
-      const canvas = document.createElement("canvas");
-      canvas.width  = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        // canvasが使えない→FileReaderフォールバック
-        readAsBase64(file).then(resolve).catch(reject);
+      // まず通常サイズで試す
+      let base64 = tryCanvas(img, maxPx, quality);
+
+      // 失敗したら 768px で再試行（iOS メモリ不足対策）
+      if (!base64) base64 = tryCanvas(img, 768, quality);
+
+      // それでも失敗したら 512px で再試行
+      if (!base64) base64 = tryCanvas(img, 512, quality);
+
+      if (!base64) {
+        reject(new Error("画像の変換に失敗しました。別の画像を試してください。"));
         return;
       }
-      ctx.drawImage(img, 0, 0, w, h);
 
-      const dataUrl = canvas.toDataURL("image/jpeg", quality);
-      const base64 = dataUrl.split(",")[1];
-      // canvas が空/不正な場合 (HEIC非対応など) はFileReaderフォールバック
-      if (!base64 || base64.length < 100) {
-        readAsBase64(file).then(resolve).catch(reject);
-        return;
-      }
       resolve({ base64, mediaType: "image/jpeg" });
     };
 
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      // img.loadが失敗→FileReaderフォールバック
-      readAsBase64(file).then(resolve).catch(reject);
+      reject(new Error("画像の読み込みに失敗しました。"));
     };
+
     img.src = objectUrl;
   });
 }
