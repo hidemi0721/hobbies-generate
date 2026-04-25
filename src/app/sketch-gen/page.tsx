@@ -29,7 +29,7 @@ export default function SketchGenPage() {
   const [saving,        setSaving]        = useState(false);
   const [arrangingField,setArrangingField]= useState<keyof PromptFields | null>(null);
   const [generatedUrls, setGeneratedUrls] = useState<string[]>([]);
-  const [count,         setCount]         = useState(4);
+  const [count,         setCount]         = useState(1);
   const [imageSize,     setImageSize]     = useState("1024x1024");
   const [dragOver,      setDragOver]      = useState(false);
   const [error,         setError]         = useState<string | null>(null);

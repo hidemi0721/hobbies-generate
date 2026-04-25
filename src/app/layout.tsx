@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Sidebar } from "@/components/Sidebar";
+import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
   title: "Hobby Lab",
@@ -23,9 +24,10 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-screen bg-white dark:bg-gray-950">
         <Sidebar />
-        <div className="flex-1 min-w-0 relative">
+        <div className="flex-1 min-w-0 relative flex flex-col min-h-screen">
           <ThemeToggle />
-          {children}
+          <div className="flex-1">{children}</div>
+          <Footer />
         </div>
       </body>
     </html>
