@@ -174,6 +174,7 @@ function SnsPosterInner() {
   const [caption, setCaption]       = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [postState, setPostState]   = useState<PostState>("idle");
+  const [uploadProgress, setUploadProgress] = useState(0); // 0-100
   const [results, setResults]       = useState<PostResult[]>([]);
   const [globalError, setGlobalError] = useState("");
   const [toast, setToast]           = useState("");
@@ -257,29 +258,66 @@ function SnsPosterInner() {
     );
   };
 
-  // 投稿
+  // 投稿（2段階: Supabase 直接アップロード → SNS 投稿）
   const handlePost = async () => {
     if (!videoFile) { showToast("動画を選択してください", true); return; }
     if (selectedPlatforms.length === 0) { showToast("投稿先を選択してください", true); return; }
 
     setPostState("uploading");
+    setUploadProgress(0);
     setResults([]);
     setGlobalError("");
 
     try {
-      const fd = new FormData();
-      fd.append("video", videoFile);
-      fd.append("title", title || videoFile.name.replace(/\.[^.]+$/, ""));
-      fd.append("caption", caption);
-      fd.append("platforms", selectedPlatforms.join(","));
+      // Step 1: 署名付きアップロード URL を取得
+      const urlRes = await fetch("/api/sns-poster/upload-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: videoFile.name, contentType: videoFile.type }),
+      });
+      const urlData = await urlRes.json() as {
+        signedUrl?: string; path?: string; publicUrl?: string; error?: string;
+      };
+      if (!urlRes.ok || !urlData.signedUrl) {
+        setGlobalError(urlData.error ?? "アップロード URL の取得に失敗しました");
+        return;
+      }
 
-      const res  = await fetch("/api/sns-poster/post", { method: "POST", body: fd });
-      const data = await res.json() as { results?: PostResult[]; error?: string };
+      // Step 2: Supabase に直接アップロード（XMLHttpRequest でプログレス取得）
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", urlData.signedUrl!);
+        xhr.setRequestHeader("Content-Type", videoFile.type || "video/mp4");
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+        xhr.onload  = () => xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+        xhr.onerror = () => reject(new Error("Upload network error"));
+        xhr.send(videoFile);
+      });
 
-      if (!res.ok || data.error) {
-        setGlobalError(data.error ?? "投稿に失敗しました");
+      setUploadProgress(100);
+
+      // Step 3: SNS 各プラットフォームに投稿
+      const postRes = await fetch("/api/sns-poster/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: urlData.publicUrl,
+          supabasePath: urlData.path,
+          title: title || videoFile.name.replace(/\.[^.]+$/, ""),
+          caption,
+          platforms: selectedPlatforms,
+        }),
+      });
+      const postData = await postRes.json() as { results?: PostResult[]; error?: string };
+
+      if (!postRes.ok || postData.error) {
+        setGlobalError(postData.error ?? "投稿に失敗しました");
       } else {
-        setResults(data.results ?? []);
+        setResults(postData.results ?? []);
       }
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Unknown error");
@@ -506,7 +544,9 @@ function SnsPosterInner() {
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
             </svg>
-            投稿中...（動画サイズにより数分かかる場合があります）
+            {uploadProgress < 100
+              ? `アップロード中... ${uploadProgress}%`
+              : "SNSに投稿中..."}
           </>
         ) : (
           <>
