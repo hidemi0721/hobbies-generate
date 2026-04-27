@@ -178,8 +178,9 @@ function SnsPosterInner() {
   const [globalError, setGlobalError] = useState("");
   const [toast, setToast]           = useState("");
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef     = useRef<HTMLVideoElement>(null);
+  const fileInputRef        = useRef<HTMLInputElement>(null);
+  const cameraInputRef      = useRef<HTMLInputElement>(null);
+  const videoRef            = useRef<HTMLVideoElement>(null);
 
   // 接続ステータスを取得
   const fetchStatus = useCallback(async () => {
@@ -343,7 +344,8 @@ function SnsPosterInner() {
               ref={videoRef}
               src={videoPreview}
               controls
-              className="w-full max-h-64 object-contain"
+              playsInline
+              className="w-full max-h-72 object-contain"
             />
             <button
               onClick={() => { setVideoFile(null); setVideoPreview(""); }}
@@ -354,43 +356,63 @@ function SnsPosterInner() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <div className="p-2 text-xs text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-900">
-              {videoFile?.name} ({(videoFile!.size / 1024 / 1024).toFixed(1)} MB)
+            <div className="p-2 text-xs text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
+              <span className="truncate mr-2">{videoFile?.name}</span>
+              <span className="shrink-0">{(videoFile!.size / 1024 / 1024).toFixed(1)} MB</span>
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            className={`w-full rounded-xl border-2 border-dashed p-10 text-center transition-all cursor-pointer ${
-              isDragging
-                ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30"
-                : "border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900"
-            }`}
-          >
-            <svg
-              className="mx-auto mb-3 h-8 w-8 text-gray-300 dark:text-gray-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
+          <div className="flex flex-col gap-2">
+            {/* PC: ドラッグ＆ドロップ */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              className={`w-full rounded-xl border-2 border-dashed py-8 px-4 text-center transition-all cursor-pointer ${
+                isDragging
+                  ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30"
+                  : "border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-gray-50 dark:hover:bg-gray-900"
+              }`}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82V15a1 1 0 01-1.447.894L15 13.5M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-            </svg>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              動画をドラッグ＆ドロップ
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">または クリックして選択</p>
-            <p className="text-[10px] text-gray-300 dark:text-gray-700 mt-2">MP4 / MOV / WebM</p>
-          </button>
+              <svg className="mx-auto mb-3 h-8 w-8 text-gray-300 dark:text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82V15a1 1 0 01-1.447.894L15 13.5M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+              </svg>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                <span className="hidden sm:inline">ドラッグ＆ドロップ、または</span>タップして選択
+              </p>
+              <p className="text-[10px] text-gray-300 dark:text-gray-700 mt-1">MP4 / MOV / WebM</p>
+            </button>
+
+            {/* モバイル: カメラ撮影ボタン */}
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              className="sm:hidden flex items-center justify-center gap-2 w-full rounded-xl border border-gray-200 dark:border-gray-700 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              カメラで撮影
+            </button>
+          </div>
         )}
+
+        {/* ギャラリー選択（全デバイス） */}
         <input
           ref={fileInputRef}
           type="file"
           accept="video/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) setVideo(f); }}
+        />
+        {/* カメラ直接撮影（モバイル向け） */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="video/*"
+          capture="environment"
           className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) setVideo(f); }}
         />
