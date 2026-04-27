@@ -187,22 +187,16 @@ export async function uploadToTikTok(
   caption: string,
   accessToken: string
 ): Promise<PlatformResult> {
+  // video.upload スコープ = クリエイターの受信トレイ（下書き）に保存
+  // video.publish スコープ（要審査）= 直接投稿
   // Step 1: アップロード初期化
-  const initRes = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+  const initRes = await fetch("https://open.tiktokapis.com/v2/post/publish/inbox/video/init/", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json; charset=UTF-8",
     },
     body: JSON.stringify({
-      post_info: {
-        title: caption.slice(0, 150),
-        privacy_level: "PUBLIC_TO_EVERYONE",
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
-        video_cover_timestamp_ms: 1000,
-      },
       source_info: {
         source: "FILE_UPLOAD",
         video_size: videoBlob.size,

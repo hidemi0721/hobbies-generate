@@ -3,7 +3,8 @@ import { getOrigin } from "@/lib/getOrigin";
 import crypto from "crypto";
 
 const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY ?? "";
-const SCOPES     = "video.publish,video.upload";
+// video.publish は審査が必要。審査完了後に "video.publish,video.upload" に変更する
+const SCOPES = "video.upload";
 
 export async function GET(req: NextRequest) {
   if (!CLIENT_KEY) {
