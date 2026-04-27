@@ -31,8 +31,10 @@ export async function GET(req: NextRequest) {
       }),
     });
     const tokenData = await tokenRes.json();
+    console.error("[tiktok/callback] token response:", JSON.stringify(tokenData));
     if (!tokenData.access_token) {
-      return NextResponse.redirect(`${origin}/sns-poster?tt_error=token_failed`);
+      const msg = encodeURIComponent(tokenData.error_description ?? tokenData.error ?? "token_failed");
+      return NextResponse.redirect(`${origin}/sns-poster?tt_error=${msg}`);
     }
 
     const response = NextResponse.redirect(`${origin}/sns-poster?tt_connected=1`);
