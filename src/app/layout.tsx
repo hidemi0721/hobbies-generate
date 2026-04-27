@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "Hobby Lab",
   description: "趣味で作った AI ツールをまとめたポータル",
   verification: {
-    google: "CkzQ74WrU8j3zb23ifyUy6X9n0ow7gO9DhnaBBZoR50",
+    google: "FBOvs5U4OaBhvn_29a8fqVc872dsjmHnnuVtso4liU8",
   },
 };
 
