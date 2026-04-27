@@ -7,8 +7,6 @@ export async function POST() {
 
   const { data, error } = await supabase.storage.createBucket("sns-temp", {
     public: true,
-    fileSizeLimit: 524288000, // 500MB
-    allowedMimeTypes: ["video/*"],
   });
 
   if (error) {
