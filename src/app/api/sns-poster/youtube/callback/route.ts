@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/getOrigin";
 
 const CLIENT_ID     = process.env.YOUTUBE_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.YOUTUBE_CLIENT_SECRET ?? "";
 
 export async function GET(req: NextRequest) {
-  const origin      = req.nextUrl.origin;
+  const origin      = getOrigin(req);
   const redirectUri = `${origin}/api/sns-poster/youtube/callback`;
   const code        = req.nextUrl.searchParams.get("code");
 

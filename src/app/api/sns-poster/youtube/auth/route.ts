@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/getOrigin";
 
 const CLIENT_ID = process.env.YOUTUBE_CLIENT_ID ?? "";
 const SCOPES    = "https://www.googleapis.com/auth/youtube.upload";
@@ -8,8 +9,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "YOUTUBE_CLIENT_ID が未設定です" }, { status: 500 });
   }
 
-  // リクエストのホスト（ポート含む）から動的に生成
-  const origin      = req.nextUrl.origin;
+  const origin      = getOrigin(req);
   const redirectUri = `${origin}/api/sns-poster/youtube/callback`;
 
   const params = new URLSearchParams({

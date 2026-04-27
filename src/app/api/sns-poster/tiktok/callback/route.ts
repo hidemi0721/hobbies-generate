@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/getOrigin";
 
 const CLIENT_KEY    = process.env.TIKTOK_CLIENT_KEY ?? "";
 const CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET ?? "";
 
 export async function GET(req: NextRequest) {
-  const origin      = req.nextUrl.origin;
+  const origin      = getOrigin(req);
   const redirectUri = `${origin}/api/sns-poster/tiktok/callback`;
   const code        = req.nextUrl.searchParams.get("code");
   const state       = req.nextUrl.searchParams.get("state");

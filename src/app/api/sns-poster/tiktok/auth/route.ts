@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/getOrigin";
 import crypto from "crypto";
 
 const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY ?? "";
@@ -6,13 +7,10 @@ const SCOPES     = "video.publish,video.upload";
 
 export async function GET(req: NextRequest) {
   if (!CLIENT_KEY) {
-    return NextResponse.json(
-      { error: "TIKTOK_CLIENT_KEY が未設定です" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "TIKTOK_CLIENT_KEY が未設定です" }, { status: 500 });
   }
 
-  const origin      = req.nextUrl.origin;
+  const origin      = getOrigin(req);
   const redirectUri = `${origin}/api/sns-poster/tiktok/callback`;
   const csrfState   = crypto.randomBytes(16).toString("hex");
 
