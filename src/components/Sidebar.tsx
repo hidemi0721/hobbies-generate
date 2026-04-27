@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: "/concept-art", label: "Concept Art Styler",  emoji: "🎨" },
   { href: "/pose-changer",label: "Pose Changer",        emoji: "🕺" },
   { href: "/music-gen",   label: "Music Generator",     emoji: "🎵" },
+  { href: "/sns-poster",  label: "SNS Bulk Poster",     emoji: "📤" },
 ];
 
 const UTILITY_ITEMS = [

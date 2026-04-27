@@ -7,6 +7,7 @@ const FOOTER_SECTIONS = [
       { href: "/concept-art",  label: "Concept Art Styler" },
       { href: "/pose-changer", label: "Pose Changer" },
       { href: "/music-gen",    label: "Music Generator" },
+      { href: "/sns-poster",   label: "SNS Bulk Poster" },
     ],
   },
   {
