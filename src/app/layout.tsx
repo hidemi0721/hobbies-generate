@@ -7,9 +7,6 @@ import { Footer } from "@/components/Footer";
 export const metadata: Metadata = {
   title: "Hobby Lab",
   description: "趣味で作った AI ツールをまとめたポータル",
-  verification: {
-    google: "FBOvs5U4OaBhvn_29a8fqVc872dsjmHnnuVtso4liU8",
-  },
 };
 
 export default function RootLayout({
@@ -18,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className="h-full antialiased">
       <head>
+        <meta name="google-site-verification" content="FBOvs5U4OaBhvn_29a8fqVc872dsjmHnnuVtso4liU8" />
         {/* ダークモード設定（フラッシュ防止） */}
         <script
           dangerouslySetInnerHTML={{
