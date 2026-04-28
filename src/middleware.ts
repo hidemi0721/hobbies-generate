@@ -27,7 +27,13 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname === "/login" || pathname.startsWith("/api/auth/")) {
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/api/auth/") ||
+    pathname === "/terms" ||
+    pathname === "/privacy" ||
+    pathname.endsWith(".txt")
+  ) {
     return NextResponse.next();
   }
 
