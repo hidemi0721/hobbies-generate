@@ -68,11 +68,6 @@ export async function GET(req: NextRequest) {
           .update({ status: "done" })
           .eq("id", post.id);
 
-        // Supabase の一時ファイルを削除
-        if (post.supabase_path) {
-          await supabase.storage.from("sns-temp").remove([post.supabase_path]);
-        }
-
         results.push({ id: post.id, platform: post.platform, success: true });
       } else {
         throw new Error(result.error ?? "投稿失敗");

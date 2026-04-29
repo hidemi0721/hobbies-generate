@@ -94,11 +94,6 @@ export async function POST(req: NextRequest) {
 
     const results = await Promise.all(tasks);
 
-    // ── Supabase の一時ファイルを削除 ────────────────────────────────
-    if (supabasePath) {
-      await getSupabase().storage.from("sns-temp").remove([supabasePath]);
-    }
-
     return NextResponse.json({ results });
   } catch (e) {
     console.error("[sns-poster/post]", e);

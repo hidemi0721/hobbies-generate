@@ -20,6 +20,14 @@ type PostState = "idle" | "uploading" | "done";
 
 type ScheduledItem = { platform: Platform; time: string };
 
+type SavedVideo = {
+  id: string;
+  name: string;
+  url: string;
+  path: string;
+  savedAt: string;
+};
+
 // ── プラットフォーム設定 ────────────────────────────────────────────────────
 
 const PLATFORMS: {
@@ -200,6 +208,14 @@ function SnsPosterInner() {
       return saved ? JSON.parse(saved) : {};
     } catch { return {}; }
   });
+  const [savedVideos, setSavedVideos] = useState<SavedVideo[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const s = localStorage.getItem("sns_saved_videos");
+      return s ? JSON.parse(s) : [];
+    } catch { return []; }
+  });
+  const [reuseVideo, setReuseVideo] = useState<SavedVideo | null>(null);
 
   const fileInputRef        = useRef<HTMLInputElement>(null);
   const cameraInputRef      = useRef<HTMLInputElement>(null);
@@ -250,6 +266,44 @@ function SnsPosterInner() {
     setTimeout(() => setToast(""), isError ? 6000 : 3000);
   };
 
+  const addToSavedVideos = useCallback((video: SavedVideo) => {
+    setSavedVideos(prev => {
+      if (prev.some(v => v.path === video.path)) return prev;
+      let next = [video, ...prev];
+      if (next.length > 10) {
+        const toDelete = next.slice(10);
+        next = next.slice(0, 10);
+        for (const v of toDelete) {
+          fetch("/api/sns-poster/saved-videos", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: v.path }),
+          }).catch(() => {});
+        }
+      }
+      localStorage.setItem("sns_saved_videos", JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const deleteFromSavedVideos = useCallback(async (video: SavedVideo) => {
+    await fetch("/api/sns-poster/saved-videos", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: video.path }),
+    }).catch(() => {});
+    setSavedVideos(prev => {
+      const next = prev.filter(v => v.id !== video.id);
+      localStorage.setItem("sns_saved_videos", JSON.stringify(next));
+      return next;
+    });
+    setReuseVideo(prev => prev?.id === video.id ? null : prev);
+    setVideoPreview(prev => {
+      if (reuseVideo?.id === video.id) return "";
+      return prev;
+    });
+  }, [reuseVideo]);
+
   const markPosted = (platforms: Platform[]) => {
     const now = new Date().toISOString();
     setLastPostTimes((prev) => {
@@ -267,6 +321,7 @@ function SnsPosterInner() {
       return;
     }
     setVideoFile(file);
+    setReuseVideo(null);
     const url = URL.createObjectURL(file);
     setVideoPreview(url);
     setResults([]);
@@ -312,7 +367,7 @@ function SnsPosterInner() {
       body: JSON.stringify({
         videoUrl: publicUrl,
         supabasePath,
-        title: title || videoFile!.name.replace(/\.[^.]+$/, ""),
+        title: title || (videoFile?.name ?? reuseVideo?.name ?? "動画").replace(/\.[^.]+$/, ""),
         caption,
         platforms,
         scheduledTimes: scheduledTimesUtc,
@@ -325,7 +380,7 @@ function SnsPosterInner() {
 
   // 投稿（2段階: Supabase 直接アップロード → SNS 投稿）
   const handlePost = async () => {
-    if (!videoFile) { showToast("動画を選択してください", true); return; }
+    if (!videoFile && !reuseVideo) { showToast("動画を選択してください", true); return; }
     if (selectedPlatforms.length === 0) { showToast("投稿先を選択してください", true); return; }
 
     setPostState("uploading");
@@ -335,40 +390,51 @@ function SnsPosterInner() {
     setGlobalError("");
 
     try {
-      // Step 1: 署名付きアップロード URL を取得
-      const urlRes = await fetch("/api/sns-poster/upload-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: videoFile.name, contentType: videoFile.type }),
-      });
-      const urlData = await urlRes.json() as {
-        signedUrl?: string; path?: string; publicUrl?: string; error?: string;
-      };
-      if (!urlRes.ok || !urlData.signedUrl) {
-        setGlobalError(urlData.error ?? "アップロード URL の取得に失敗しました");
-        return;
+      let publicUrl: string;
+      let supabasePath: string;
+      const videoName = videoFile?.name ?? reuseVideo?.name ?? "動画";
+
+      if (reuseVideo) {
+        // 保存済み動画を再利用（アップロードスキップ）
+        publicUrl = reuseVideo.url;
+        supabasePath = reuseVideo.path;
+        setUploadProgress(100);
+      } else {
+        // Step 1: 署名付きアップロード URL を取得
+        const urlRes = await fetch("/api/sns-poster/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: videoFile!.name, contentType: videoFile!.type }),
+        });
+        const urlData = await urlRes.json() as {
+          signedUrl?: string; path?: string; publicUrl?: string; error?: string;
+        };
+        if (!urlRes.ok || !urlData.signedUrl) {
+          setGlobalError(urlData.error ?? "アップロード URL の取得に失敗しました");
+          return;
+        }
+
+        // Step 2: Supabase に直接アップロード（XMLHttpRequest でプログレス取得）
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", urlData.signedUrl!);
+          xhr.setRequestHeader("Content-Type", videoFile!.type || "video/mp4");
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              setUploadProgress(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+          xhr.onload  = () => xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+          xhr.onerror = () => reject(new Error("Upload network error"));
+          xhr.send(videoFile!);
+        });
+
+        setUploadProgress(100);
+        publicUrl = urlData.publicUrl!;
+        supabasePath = urlData.path!;
       }
 
-      // Step 2: Supabase に直接アップロード（XMLHttpRequest でプログレス取得）
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", urlData.signedUrl!);
-        xhr.setRequestHeader("Content-Type", videoFile.type || "video/mp4");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setUploadProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        };
-        xhr.onload  = () => xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
-        xhr.onerror = () => reject(new Error("Upload network error"));
-        xhr.send(videoFile);
-      });
-
-      setUploadProgress(100);
-
       const now = Date.now();
-      const publicUrl = urlData.publicUrl!;
-      const supabasePath = urlData.path!;
 
       // 即時投稿 / サーバー予約 を振り分け
       const immediate: Platform[] = [];
@@ -405,7 +471,7 @@ function SnsPosterInner() {
               platform,
               videoUrl: publicUrl,
               supabasePath,
-              title: title || videoFile!.name.replace(/\.[^.]+$/, ""),
+              title: title || (videoFile?.name ?? reuseVideo?.name ?? "動画").replace(/\.[^.]+$/, ""),
               caption,
               scheduledTime: isoTime,
             }),
@@ -429,6 +495,17 @@ function SnsPosterInner() {
         }
         setResults(prev => [...prev, ...savedResults]);
         showToast("サーバー予約を設定しました。タブを閉じても投稿されます。");
+      }
+
+      // 動画を保存履歴に追加（再利用でない場合のみ新規追加）
+      if (!reuseVideo) {
+        addToSavedVideos({
+          id: crypto.randomUUID(),
+          name: videoName,
+          url: publicUrl,
+          path: supabasePath,
+          savedAt: new Date().toISOString(),
+        });
       }
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Unknown error");
@@ -526,6 +603,65 @@ function SnsPosterInner() {
           <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-600">
             Meta Business Suite → 設定 → Instagram アカウント で確認できる数字IDを入力してください。
           </p>
+        </section>
+      )}
+
+      {/* ── 保存した動画 ── */}
+      {savedVideos.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 mb-3">
+            保存した動画 <span className="normal-case font-normal text-gray-300 dark:text-gray-700">({savedVideos.length}/10)</span>
+          </h2>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {savedVideos.map(v => (
+              <div
+                key={v.id}
+                className={`relative shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                  reuseVideo?.id === v.id
+                    ? "border-indigo-500 shadow-md"
+                    : "border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700"
+                }`}
+                onClick={() => {
+                  setReuseVideo(v);
+                  setVideoFile(null);
+                  setVideoPreview(v.url);
+                  setResults([]);
+                  setGlobalError("");
+                }}
+              >
+                <video
+                  src={v.url}
+                  className="w-full h-full object-cover pointer-events-none"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-1 py-1">
+                  <p className="text-[8px] text-white truncate">{v.name}</p>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); deleteFromSavedVideos(v); }}
+                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/50 hover:bg-red-500 flex items-center justify-center text-white transition-colors"
+                  title="削除"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          {reuseVideo && (
+            <p className="mt-1.5 text-[11px] text-indigo-600 dark:text-indigo-400">
+              ✓ 保存済み「{reuseVideo.name}」を使用中
+              <button
+                onClick={() => { setReuseVideo(null); setVideoPreview(""); setVideoFile(null); }}
+                className="ml-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline"
+              >
+                解除
+              </button>
+            </p>
+          )}
         </section>
       )}
 
