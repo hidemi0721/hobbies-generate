@@ -718,7 +718,7 @@ function SnsPosterInner() {
           </div>
           {selectedPlatforms.some((p) => scheduledTimes[p]) && (
             <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-              ⚠ Instagram・TikTok の予約投稿はタブを閉じないでください。YouTube はタブを閉じても予約されます。
+              ℹ すべてのプラットフォームでタブを閉じても予約投稿されます。
             </p>
           )}
         </section>
