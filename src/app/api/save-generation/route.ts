@@ -24,29 +24,15 @@ async function uploadDataUrl(dataUrl: string, path: string): Promise<string> {
   return uploadToStorage(buf, path, mime);
 }
 
-async function uploadBase64(base64: string, mediaType: string, path: string): Promise<string> {
-  const buf = Buffer.from(base64, "base64");
-  return uploadToStorage(buf, path, mediaType);
-}
 
 export async function POST(req: NextRequest) {
   const authError = checkAuth(req);
   if (authError) return authError;
 
   try {
-    const { prompt, imageBase64, imageMediaType, generatedUrls } = await req.json();
+    const { prompt, generatedUrls } = await req.json();
 
     const ts = Date.now();
-
-    // オリジナル画像をSupabase Storageにアップロード（あれば）
-    let originalImageUrl: string | null = null;
-    if (imageBase64) {
-      originalImageUrl = await uploadBase64(
-        imageBase64,
-        imageMediaType || "image/jpeg",
-        `originals/${ts}-original.jpg`
-      );
-    }
 
     // 生成画像（data:URL or 通常URL）をSupabase Storageにアップロード
     const persistedUrls = await Promise.all(
@@ -60,7 +46,7 @@ export async function POST(req: NextRequest) {
     );
 
     const { error } = await getSupabase().from("rough_generations").insert({
-      original_image_url: originalImageUrl,
+      original_image_url: null,
       prompt,
       generated_images_urls: persistedUrls,
     });
