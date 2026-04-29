@@ -344,65 +344,63 @@ function SnsPosterInner() {
       const publicUrl = urlData.publicUrl!;
       const supabasePath = urlData.path!;
 
-      // 即時投稿 / 予約投稿 を振り分け
-      // YouTube は API ネイティブ予約のため即時グループへ
-      // Instagram・TikTok は setTimeout でクライアント予約
+      // 即時投稿 / サーバー予約 を振り分け
       const immediate: Platform[] = [];
-      const deferred: { platform: Platform; delay: number; isoTime: string }[] = [];
+      const serverScheduled: { platform: Platform; isoTime: string }[] = [];
 
       for (const pid of selectedPlatforms) {
         const t = scheduledTimes[pid];
-        if (t && pid !== "youtube") {
-          const delay = new Date(t).getTime() - now;
-          if (delay > 0) {
-            deferred.push({ platform: pid, delay, isoTime: t });
-          } else {
-            immediate.push(pid);
-          }
+        if (t && pid !== "youtube" && new Date(t).getTime() > now) {
+          serverScheduled.push({ platform: pid, isoTime: toUtcIso(t) });
         } else {
-          immediate.push(pid); // YouTube は即時グループ（publishAt はAPIに渡す）
+          immediate.push(pid);
         }
       }
 
       // Step 3a: 即時投稿
       if (immediate.length > 0) {
-        // 予約がなければ Supabase ファイルを削除
-        const path = deferred.length === 0 ? supabasePath : "";
+        const path = serverScheduled.length === 0 ? supabasePath : "";
         const immediateSchedules = Object.fromEntries(
-          immediate.flatMap(p => scheduledTimes[p] ? [[p, scheduledTimes[p]!]] : [])
+          immediate.flatMap(p => scheduledTimes[p] ? [[p, toUtcIso(scheduledTimes[p]!)]] : [])
         ) as Partial<Record<Platform, string>>;
         const r = await callPostApi(immediate, publicUrl, path, immediateSchedules);
         setResults(r);
       }
 
-      // Step 3b: 予約投稿（setTimeout）
-      if (deferred.length > 0) {
-        setPendingSchedules(deferred.map(d => ({ platform: d.platform, time: d.isoTime })));
-        showToast("予約投稿を設定しました。このタブを閉じないでください。");
-
-        deferred.forEach(({ platform, delay, isoTime }, idx) => {
-          const isLast = idx === deferred.length - 1;
-          setTimeout(async () => {
-            try {
-              const r = await callPostApi(
-                [platform],
-                publicUrl,
-                isLast ? supabasePath : "",
-                { [platform]: isoTime } as Partial<Record<Platform, string>>
-              );
-              setResults(prev => [...prev, ...r]);
-              setPendingSchedules(prev => prev.filter(s => s.platform !== platform));
-              showToast(`${PLATFORMS.find(p => p.id === platform)?.label} への投稿が完了しました`);
-            } catch (e) {
-              setResults(prev => [...prev, {
-                platform,
-                success: false,
-                error: e instanceof Error ? e.message : "予約投稿に失敗",
-              }]);
-              setPendingSchedules(prev => prev.filter(s => s.platform !== platform));
-            }
-          }, delay);
-        });
+      // Step 3b: サーバー予約（Supabase に保存 → Cron で実行）
+      if (serverScheduled.length > 0) {
+        const savedResults: PostResult[] = [];
+        for (const { platform, isoTime } of serverScheduled) {
+          const res = await fetch("/api/sns-poster/schedule", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              platform,
+              videoUrl: publicUrl,
+              supabasePath,
+              title: title || videoFile!.name.replace(/\.[^.]+$/, ""),
+              caption,
+              scheduledTime: isoTime,
+            }),
+          });
+          const data = await res.json() as { ok?: boolean; error?: string };
+          const pLabel = PLATFORMS.find(p => p.id === platform)?.label ?? platform;
+          if (data.ok) {
+            savedResults.push({
+              platform: platform as Platform,
+              success: true,
+              url: `予約完了: ${new Date(isoTime).toLocaleString("ja-JP")} に自動投稿`,
+            });
+          } else {
+            savedResults.push({
+              platform: platform as Platform,
+              success: false,
+              error: data.error ?? "予約保存失敗",
+            });
+          }
+        }
+        setResults(prev => [...prev, ...savedResults]);
+        showToast("サーバー予約を設定しました。タブを閉じても投稿されます。");
       }
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Unknown error");
