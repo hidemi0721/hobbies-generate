@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY ?? "";
 // video.publish は審査が必要。審査完了後に "video.publish,video.upload" に変更する
-const SCOPES = "video.upload";
+const SCOPES = "user.info.basic,video.upload";
 
 export async function GET(req: NextRequest) {
   if (!CLIENT_KEY) {
