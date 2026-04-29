@@ -52,7 +52,9 @@ export default function SketchGenPage() {
     try {
       const res  = await fetch("/api/generations");
       const data = await res.json();
-      if (data.generations) setHistory(data.generations);
+      if (data.generations) setHistory(
+        data.generations.filter((g: Generation) => g.generated_images_urls?.length > 0)
+      );
     } catch { /* ignore */ } finally { setHistoryLoading(false); }
   }, []);
 

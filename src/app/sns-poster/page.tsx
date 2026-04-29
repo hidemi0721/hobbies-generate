@@ -623,7 +623,7 @@ function SnsPosterInner() {
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
               タイトル
-              <span className="ml-1 text-[10px] text-gray-400">(YouTube・TikTok で使用)</span>
+              <span className="ml-1 text-[10px] text-gray-400">— YouTube: 動画タイトル / TikTok: 説明文の冒頭 / Instagram: 未使用</span>
             </label>
             <input
               type="text"
@@ -637,7 +637,7 @@ function SnsPosterInner() {
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
               キャプション / 説明文
-              <span className="ml-1 text-[10px] text-gray-400">(ハッシュタグを含む)</span>
+              <span className="ml-1 text-[10px] text-gray-400">— YouTube: 概要欄 / TikTok: 説明文・ハッシュタグ / Instagram: キャプション・ハッシュタグ</span>
             </label>
             <textarea
               value={caption}
@@ -745,11 +745,6 @@ function SnsPosterInner() {
               );
             })}
           </div>
-          {selectedPlatforms.some((p) => scheduledTimes[p]) && (
-            <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-              ℹ すべてのプラットフォームでタブを閉じても予約投稿されます。
-            </p>
-          )}
         </section>
       )}
 
