@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOrigin } from "@/lib/getOrigin";
 
 const CLIENT_ID     = process.env.INSTAGRAM_CLIENT_ID ?? "";
 const CLIENT_SECRET = process.env.INSTAGRAM_CLIENT_SECRET ?? "";
-const REDIRECT_URI  = `${process.env.NEXT_PUBLIC_APP_URL}/api/sns-poster/instagram/callback`;
-const APP_URL       = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
 export async function GET(req: NextRequest) {
+  const origin      = getOrigin(req);
+  const redirectUri = `${origin}/api/sns-poster/instagram/callback`;
+  const appUrl      = origin;
+
   const code = req.nextUrl.searchParams.get("code");
   if (!code) {
-    return NextResponse.redirect(`${APP_URL}/sns-poster?ig_error=no_code`);
+    return NextResponse.redirect(`${appUrl}/sns-poster?ig_error=no_code`);
   }
 
   try {
@@ -19,13 +22,13 @@ export async function GET(req: NextRequest) {
       body: new URLSearchParams({
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        redirect_uri: REDIRECT_URI,
+        redirect_uri: redirectUri,
         code,
       }),
     });
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) {
-      return NextResponse.redirect(`${APP_URL}/sns-poster?ig_error=token_failed`);
+      return NextResponse.redirect(`${appUrl}/sns-poster?ig_error=token_failed`);
     }
 
     // Step 2: 長期トークンに交換（60日間有効）
@@ -63,7 +66,7 @@ export async function GET(req: NextRequest) {
     }
 
     const response = NextResponse.redirect(
-      `${APP_URL}/sns-poster?ig_connected=1${igUserId ? "" : "&ig_warn=no_ig_account"}`
+      `${appUrl}/sns-poster?ig_connected=1${igUserId ? "" : "&ig_warn=no_ig_account"}`
     );
     response.cookies.set("sns_ig_access_token", longToken, {
       httpOnly: true,
@@ -84,6 +87,6 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (e) {
     console.error("[sns-poster/instagram/callback]", e);
-    return NextResponse.redirect(`${APP_URL}/sns-poster?ig_error=exception`);
+    return NextResponse.redirect(`${appUrl}/sns-poster?ig_error=exception`);
   }
 }
