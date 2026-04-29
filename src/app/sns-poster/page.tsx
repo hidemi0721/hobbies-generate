@@ -689,8 +689,10 @@ function SnsPosterInner() {
               </svg>
             </button>
             <div className="p-2 text-xs text-gray-400 dark:text-gray-600 bg-gray-50 dark:bg-gray-900 flex items-center justify-between">
-              <span className="truncate mr-2">{videoFile?.name}</span>
-              <span className="shrink-0">{(videoFile!.size / 1024 / 1024).toFixed(1)} MB</span>
+              <span className="truncate mr-2">{videoFile?.name ?? reuseVideo?.name}</span>
+              {videoFile && (
+                <span className="shrink-0">{(videoFile.size / 1024 / 1024).toFixed(1)} MB</span>
+              )}
             </div>
           </div>
         ) : (
