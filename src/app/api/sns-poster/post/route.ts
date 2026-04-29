@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       const igUserId    = req.cookies.get("sns_ig_user_id")?.value;
       tasks.push(
         accessToken && igUserId
-          ? uploadToInstagram(videoUrl, caption, accessToken, igUserId)
+          ? uploadToInstagram(videoUrl, caption, accessToken, igUserId, scheduledTimes?.instagram)
           : Promise.resolve({
               platform: "instagram" as const,
               success: false,

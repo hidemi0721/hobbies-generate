@@ -264,6 +264,10 @@ function SnsPosterInner() {
     );
   };
 
+  // datetime-local の値（ローカル時刻）を UTC ISO 文字列に変換
+  const toUtcIso = (localDatetime: string): string =>
+    new Date(localDatetime).toISOString();
+
   // プラットフォームごとに SNS 投稿 API を呼び出す
   const callPostApi = async (
     platforms: Platform[],
@@ -271,6 +275,11 @@ function SnsPosterInner() {
     supabasePath: string,
     schedules: Partial<Record<Platform, string>>
   ): Promise<PostResult[]> => {
+    // UTC に変換してから送信（YouTube publishAt / Instagram scheduled_publish_time 用）
+    const scheduledTimesUtc = Object.fromEntries(
+      Object.entries(schedules).map(([k, v]) => [k, v ? toUtcIso(v) : v])
+    ) as Partial<Record<Platform, string>>;
+
     const res = await fetch("/api/sns-poster/post", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -280,7 +289,7 @@ function SnsPosterInner() {
         title: title || videoFile!.name.replace(/\.[^.]+$/, ""),
         caption,
         platforms,
-        scheduledTimes: schedules,
+        scheduledTimes: scheduledTimesUtc,
       }),
     });
     const data = await res.json() as { results?: PostResult[]; error?: string };
@@ -336,20 +345,22 @@ function SnsPosterInner() {
       const supabasePath = urlData.path!;
 
       // 即時投稿 / 予約投稿 を振り分け
+      // Instagram はネイティブ予約（API 側で処理）のため即時グループへ
+      // TikTok のみ setTimeout でクライアント予約
       const immediate: Platform[] = [];
       const deferred: { platform: Platform; delay: number; isoTime: string }[] = [];
 
       for (const pid of selectedPlatforms) {
         const t = scheduledTimes[pid];
-        if (t) {
+        if (t && pid === "tiktok") {
           const delay = new Date(t).getTime() - now;
           if (delay > 0) {
             deferred.push({ platform: pid, delay, isoTime: t });
           } else {
-            immediate.push(pid); // 過去の時刻は即時投稿
+            immediate.push(pid);
           }
         } else {
-          immediate.push(pid);
+          immediate.push(pid); // YouTube・Instagram は即時グループ（予約時間はAPIに渡す）
         }
       }
 
@@ -709,7 +720,7 @@ function SnsPosterInner() {
           </div>
           {selectedPlatforms.some((p) => scheduledTimes[p]) && (
             <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-              ⚠ 予約投稿中はこのタブを閉じないでください（YouTube は除く）
+              ⚠ TikTok の予約投稿はタブを閉じないでください。YouTube・Instagram はタブを閉じても予約されます。
             </p>
           )}
         </section>

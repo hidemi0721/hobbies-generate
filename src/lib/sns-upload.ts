@@ -121,8 +121,14 @@ export async function uploadToInstagram(
   publicVideoUrl: string,
   caption: string,
   accessToken: string,
-  igUserId: string
+  igUserId: string,
+  scheduledTime?: string  // ISO 8601 UTC — 指定時はネイティブ予約投稿
 ): Promise<PlatformResult> {
+  const isScheduled = !!scheduledTime;
+  const scheduledUnix = isScheduled
+    ? Math.floor(new Date(scheduledTime!).getTime() / 1000)
+    : undefined;
+
   // Step 1: Reels コンテナ作成
   const containerRes = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media`, {
     method: "POST",
@@ -133,6 +139,7 @@ export async function uploadToInstagram(
       caption: caption.slice(0, 2200),
       share_to_feed: true,
       access_token: accessToken,
+      ...(isScheduled ? { published: false, scheduled_publish_time: scheduledUnix } : {}),
     }),
   });
   const containerData = await containerRes.json();
@@ -167,7 +174,16 @@ export async function uploadToInstagram(
     return { platform: "instagram", success: false, error: "動画処理タイムアウト（3分）" };
   }
 
-  // Step 3: 公開
+  // 予約投稿: Instagram が scheduled_publish_time に自動公開するためここで終了
+  if (isScheduled) {
+    return {
+      platform: "instagram",
+      success: true,
+      url: `予約完了: ${new Date(scheduledTime!).toLocaleString("ja-JP")} に自動投稿されます`,
+    };
+  }
+
+  // Step 3: 即時公開
   const publishRes = await fetch(`https://graph.facebook.com/v21.0/${igUserId}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
