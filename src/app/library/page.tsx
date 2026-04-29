@@ -37,10 +37,12 @@ function ToolBadge({ tool }: { tool: string }) {
 }
 
 export default function LibraryPage() {
-  const [items,    setItems]    = useState<LibraryItem[]>([]);
-  const [filter,   setFilter]   = useState("all");
-  const [loading,  setLoading]  = useState(true);
-  const [selected, setSelected] = useState<LibraryItem | null>(null);
+  const [items,      setItems]      = useState<LibraryItem[]>([]);
+  const [filter,     setFilter]     = useState("all");
+  const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState<LibraryItem | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
 
   const load = useCallback(async (tool: string) => {
     setLoading(true);
@@ -53,6 +55,25 @@ export default function LibraryPage() {
   }, []);
 
   useEffect(() => { load(filter); }, [load, filter]);
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/library/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, tool: selected.tool }),
+      });
+      if (res.ok) {
+        setItems((prev) => prev.filter((i) => i.id !== selected.id));
+        setSelected(null);
+        setConfirmDel(false);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
@@ -135,7 +156,7 @@ export default function LibraryPage() {
       {selected && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-          onClick={() => setSelected(null)}
+          onClick={() => { setSelected(null); setConfirmDel(false); }}
         >
           <div
             className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
@@ -143,7 +164,7 @@ export default function LibraryPage() {
           >
             {/* 閉じるボタン */}
             <button
-              onClick={() => setSelected(null)}
+              onClick={() => { setSelected(null); setConfirmDel(false); }}
               className="absolute top-3 right-3 z-10 p-2 rounded-xl bg-black/20 hover:bg-black/40 text-white transition-colors"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -216,6 +237,38 @@ export default function LibraryPage() {
                   </svg>
                   ダウンロード
                 </a>
+              )}
+
+              {/* 削除 */}
+              {!confirmDel ? (
+                <button
+                  onClick={() => setConfirmDel(true)}
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-red-200 dark:border-red-800 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-sm font-medium transition-colors"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  削除
+                </button>
+              ) : (
+                <div className="mt-2 p-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30">
+                  <p className="text-sm text-red-600 dark:text-red-400 text-center mb-2">本当に削除しますか？</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConfirmDel(false)}
+                      className="flex-1 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="flex-1 py-2 rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+                    >
+                      {deleting ? "削除中..." : "削除する"}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
