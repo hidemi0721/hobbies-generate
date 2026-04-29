@@ -35,6 +35,12 @@ const DIST_LINKS = [
   { href: "https://pixabay.com/music/upload/", label: "Pixabay Music", emoji: "🌐" },
 ];
 
+const STUDIO_LINKS = [
+  { href: "https://www.tiktok.com/tiktokstudio/upload",  label: "TikTok Studio",  emoji: "🎵" },
+  { href: "https://studio.youtube.com",                   label: "YouTube Studio", emoji: "▶️" },
+  { href: "https://www.instagram.com/",                   label: "Instagram",      emoji: "📸" },
+];
+
 const SNS_LINKS = [
   { href: "https://x.com/antinomy7777",             label: "X",         emoji: "𝕏" },
   { href: "https://www.instagram.com/antinomy7777", label: "Instagram", emoji: "📸" },
@@ -203,6 +209,12 @@ export function Sidebar() {
           {/* 配信 */}
           <SectionLabel label="配信" />
           {DIST_LINKS.map((item) => (
+            <ExtLink key={item.href} {...item} onClick={close} />
+          ))}
+
+          {/* 投稿 */}
+          <SectionLabel label="投稿" />
+          {STUDIO_LINKS.map((item) => (
             <ExtLink key={item.href} {...item} onClick={close} />
           ))}
 

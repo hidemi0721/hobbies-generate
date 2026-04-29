@@ -41,6 +41,14 @@ const FOOTER_SECTIONS = [
     ],
   },
   {
+    label: "投稿",
+    links: [
+      { href: "https://www.tiktok.com/tiktokstudio/upload", label: "TikTok Studio" },
+      { href: "https://studio.youtube.com",                  label: "YouTube Studio" },
+      { href: "https://www.instagram.com/",                  label: "Instagram" },
+    ],
+  },
+  {
     label: "SNS",
     links: [
       { href: "https://x.com/antinomy7777",             label: "X" },
