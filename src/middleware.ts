@@ -27,12 +27,18 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // TikTok ドメイン確認ファイル
+  if (pathname === "/tiktokvLERmJJjhkEEDhCXlxBFbaapnLEqRCVf.txt") {
+    return new NextResponse("tiktok-developers-site-verification=vLERmJJjhkEEDhCXlxBFbaapnLEqRCVf", {
+      headers: { "Content-Type": "text/plain" },
+    });
+  }
+
   if (
     pathname === "/login" ||
     pathname.startsWith("/api/auth/") ||
     pathname === "/terms" ||
-    pathname === "/privacy" ||
-    pathname.endsWith(".txt")
+    pathname === "/privacy"
   ) {
     return NextResponse.next();
   }
