@@ -150,12 +150,16 @@ export async function uploadToInstagram(
   for (let i = 0; i < 10; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     const statusRes = await fetch(
-      `https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${accessToken}`
     );
     const status = await statusRes.json();
     if (status.status_code === "FINISHED") break;
     if (status.status_code === "ERROR") {
-      return { platform: "instagram", success: false, error: "動画処理エラー" };
+      return {
+        platform: "instagram",
+        success: false,
+        error: `動画処理エラー: ${status.status ?? "詳細不明"}`,
+      };
     }
   }
 
