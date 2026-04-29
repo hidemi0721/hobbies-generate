@@ -77,11 +77,13 @@ const PLATFORMS: {
 function PlatformCard({
   platform,
   connected,
+  lastPostTime,
   onConnect,
   onDisconnect,
 }: {
   platform: (typeof PLATFORMS)[number];
   connected: boolean;
+  lastPostTime?: string;
   onConnect: () => void;
   onDisconnect: () => void;
 }) {
@@ -91,9 +93,16 @@ function PlatformCard({
     >
       <div className="flex items-center gap-2.5">
         <span className={platform.color}>{platform.icon}</span>
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {platform.label}
-        </span>
+        <div>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {platform.label}
+          </span>
+          {lastPostTime && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+              最終投稿: {new Date(lastPostTime).toLocaleString("ja-JP")}
+            </p>
+          )}
+        </div>
         {connected && (
           <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.5 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -182,8 +191,15 @@ function SnsPosterInner() {
   const [results, setResults]       = useState<PostResult[]>([]);
   const [globalError, setGlobalError] = useState("");
   const [toast, setToast]           = useState("");
-  const [igIdInput, setIgIdInput]   = useState("");
+  const [igIdInput, setIgIdInput]   = useState("17841408155441290");
   const [igIdSaved, setIgIdSaved]   = useState(false);
+  const [lastPostTimes, setLastPostTimes] = useState<Partial<Record<Platform, string>>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = localStorage.getItem("sns_last_post_times");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
 
   const fileInputRef        = useRef<HTMLInputElement>(null);
   const cameraInputRef      = useRef<HTMLInputElement>(null);
@@ -232,6 +248,16 @@ function SnsPosterInner() {
   const showToast = (msg: string, isError = false) => {
     setToast(msg);
     setTimeout(() => setToast(""), isError ? 6000 : 3000);
+  };
+
+  const markPosted = (platforms: Platform[]) => {
+    const now = new Date().toISOString();
+    setLastPostTimes((prev) => {
+      const next = { ...prev };
+      for (const p of platforms) next[p] = now;
+      localStorage.setItem("sns_last_post_times", JSON.stringify(next));
+      return next;
+    });
   };
 
   // ビデオファイルのセット
@@ -365,6 +391,7 @@ function SnsPosterInner() {
         ) as Partial<Record<Platform, string>>;
         const r = await callPostApi(immediate, publicUrl, path, immediateSchedules);
         setResults(r);
+        markPosted(r.filter((x) => x.success).map((x) => x.platform));
       }
 
       // Step 3b: サーバー予約（Supabase に保存 → Cron で実行）
@@ -386,6 +413,7 @@ function SnsPosterInner() {
           const data = await res.json() as { ok?: boolean; error?: string };
           const pLabel = PLATFORMS.find(p => p.id === platform)?.label ?? platform;
           if (data.ok) {
+            markPosted([platform]);
             savedResults.push({
               platform: platform as Platform,
               success: true,
@@ -443,6 +471,7 @@ function SnsPosterInner() {
               key={p.id}
               platform={p}
               connected={connections[p.id]}
+              lastPostTime={lastPostTimes[p.id]}
               onConnect={() => (window.location.href = p.authPath)}
               onDisconnect={() => handleDisconnect(p.id)}
             />
