@@ -444,6 +444,15 @@ function SnsPosterInner() {
         setUploadProgress(100);
         publicUrl = urlData.publicUrl!;
         supabasePath = urlData.path!;
+
+        // アップロード完了直後に保存履歴・Library へ登録
+        addToSavedVideos({
+          id: crypto.randomUUID(),
+          name: videoName,
+          url: publicUrl,
+          path: supabasePath,
+          savedAt: new Date().toISOString(),
+        });
       }
 
       const now = Date.now();
@@ -509,16 +518,6 @@ function SnsPosterInner() {
         showToast("サーバー予約を設定しました。タブを閉じても投稿されます。");
       }
 
-      // 動画を保存履歴に追加（再利用でない場合のみ新規追加）
-      if (!reuseVideo) {
-        addToSavedVideos({
-          id: crypto.randomUUID(),
-          name: videoName,
-          url: publicUrl,
-          path: supabasePath,
-          savedAt: new Date().toISOString(),
-        });
-      }
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Unknown error");
     } finally {

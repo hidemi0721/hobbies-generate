@@ -20,7 +20,7 @@ export default function LoginPage() {
         body: JSON.stringify({ password }),
       });
       if (res.ok) {
-        router.push("/sketch-gen");
+        router.push("/");
       } else {
         setError("パスワードが違います");
       }
@@ -34,7 +34,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="w-full max-w-sm px-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-8 text-center">Sketch Generator</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-8 text-center">Hobby Lab</h1>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
             type="password"
