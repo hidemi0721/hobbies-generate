@@ -182,6 +182,8 @@ function SnsPosterInner() {
   const [results, setResults]       = useState<PostResult[]>([]);
   const [globalError, setGlobalError] = useState("");
   const [toast, setToast]           = useState("");
+  const [igIdInput, setIgIdInput]   = useState("");
+  const [igIdSaved, setIgIdSaved]   = useState(false);
 
   const fileInputRef        = useRef<HTMLInputElement>(null);
   const cameraInputRef      = useRef<HTMLInputElement>(null);
@@ -442,6 +444,52 @@ function SnsPosterInner() {
           ※ TikTok は Content Posting API のアプリ審査が完了している必要があります。
         </p>
       </section>
+
+      {/* ── Instagram Business Account ID 手動設定 ── */}
+      {connections.instagram && (
+        <section className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 mb-3">
+            Instagram Business Account ID
+          </h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={igIdInput}
+              onChange={(e) => setIgIdInput(e.target.value.trim())}
+              placeholder="例: 17841408155441290"
+              className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-300 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button
+              onClick={async () => {
+                if (!igIdInput) return;
+                const res = await fetch("/api/sns-poster/instagram/set-id", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ igUserId: igIdInput }),
+                });
+                if (res.ok) {
+                  setIgIdSaved(true);
+                  showToast("Instagram Business Account ID を設定しました");
+                } else {
+                  showToast("IDの設定に失敗しました", true);
+                }
+              }}
+              disabled={!igIdInput}
+              className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 text-white text-sm font-medium transition-all"
+            >
+              設定
+            </button>
+          </div>
+          {igIdSaved && (
+            <p className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
+              ✓ ID を設定しました。Instagram への投稿が可能になりました。
+            </p>
+          )}
+          <p className="mt-1.5 text-[11px] text-gray-400 dark:text-gray-600">
+            Meta Business Suite → 設定 → Instagram アカウント で確認できる数字IDを入力してください。
+          </p>
+        </section>
+      )}
 
       {/* ── 動画選択 ── */}
       <section className="mb-6">
