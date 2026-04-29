@@ -146,14 +146,15 @@ export async function uploadToInstagram(
 
   const creationId: string = containerData.id;
 
-  // Step 2: 動画処理完了までポーリング（最大30秒）
-  for (let i = 0; i < 10; i++) {
-    await new Promise((r) => setTimeout(r, 3000));
+  // Step 2: 動画処理完了までポーリング（最大3分）
+  let finished = false;
+  for (let i = 0; i < 36; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
     const statusRes = await fetch(
       `https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${accessToken}`
     );
     const status = await statusRes.json();
-    if (status.status_code === "FINISHED") break;
+    if (status.status_code === "FINISHED") { finished = true; break; }
     if (status.status_code === "ERROR") {
       return {
         platform: "instagram",
@@ -161,6 +162,9 @@ export async function uploadToInstagram(
         error: `動画処理エラー: ${status.status ?? "詳細不明"}`,
       };
     }
+  }
+  if (!finished) {
+    return { platform: "instagram", success: false, error: "動画処理タイムアウト（3分）" };
   }
 
   // Step 3: 公開
