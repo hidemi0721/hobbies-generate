@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-/** 一時デバッグ用：CRON_SECRET が正しく読み込まれているか確認 */
+/** 一時デバッグ用：CRON_SECRET が正しく読み込まれているか確認 v2 */
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET ?? "";
   const querySecret = req.nextUrl.searchParams.get("secret") ?? "";
