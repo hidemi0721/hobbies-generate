@@ -18,6 +18,8 @@ type PostResult = {
 
 type PostState = "idle" | "uploading" | "done";
 
+type ScheduledItem = { platform: Platform; time: string };
+
 // ── プラットフォーム設定 ────────────────────────────────────────────────────
 
 const PLATFORMS: {
@@ -168,6 +170,8 @@ function SnsPosterInner() {
   });
 
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([]);
+  const [scheduledTimes, setScheduledTimes] = useState<Partial<Record<Platform, string>>>({});
+  const [pendingSchedules, setPendingSchedules] = useState<ScheduledItem[]>([]);
   const [videoFile, setVideoFile]   = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string>("");
   const [title, setTitle]           = useState("");
@@ -258,6 +262,30 @@ function SnsPosterInner() {
     );
   };
 
+  // プラットフォームごとに SNS 投稿 API を呼び出す
+  const callPostApi = async (
+    platforms: Platform[],
+    publicUrl: string,
+    supabasePath: string,
+    schedules: Partial<Record<Platform, string>>
+  ): Promise<PostResult[]> => {
+    const res = await fetch("/api/sns-poster/post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        videoUrl: publicUrl,
+        supabasePath,
+        title: title || videoFile!.name.replace(/\.[^.]+$/, ""),
+        caption,
+        platforms,
+        scheduledTimes: schedules,
+      }),
+    });
+    const data = await res.json() as { results?: PostResult[]; error?: string };
+    if (!res.ok || data.error) throw new Error(data.error ?? "投稿に失敗しました");
+    return data.results ?? [];
+  };
+
   // 投稿（2段階: Supabase 直接アップロード → SNS 投稿）
   const handlePost = async () => {
     if (!videoFile) { showToast("動画を選択してください", true); return; }
@@ -266,6 +294,7 @@ function SnsPosterInner() {
     setPostState("uploading");
     setUploadProgress(0);
     setResults([]);
+    setPendingSchedules([]);
     setGlobalError("");
 
     try {
@@ -300,24 +329,67 @@ function SnsPosterInner() {
 
       setUploadProgress(100);
 
-      // Step 3: SNS 各プラットフォームに投稿
-      const postRes = await fetch("/api/sns-poster/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoUrl: urlData.publicUrl,
-          supabasePath: urlData.path,
-          title: title || videoFile.name.replace(/\.[^.]+$/, ""),
-          caption,
-          platforms: selectedPlatforms,
-        }),
-      });
-      const postData = await postRes.json() as { results?: PostResult[]; error?: string };
+      const now = Date.now();
+      const publicUrl = urlData.publicUrl!;
+      const supabasePath = urlData.path!;
 
-      if (!postRes.ok || postData.error) {
-        setGlobalError(postData.error ?? "投稿に失敗しました");
-      } else {
-        setResults(postData.results ?? []);
+      // 即時投稿 / 予約投稿 を振り分け
+      const immediate: Platform[] = [];
+      const deferred: { platform: Platform; delay: number; isoTime: string }[] = [];
+
+      for (const pid of selectedPlatforms) {
+        const t = scheduledTimes[pid];
+        if (t) {
+          const delay = new Date(t).getTime() - now;
+          if (delay > 0) {
+            deferred.push({ platform: pid, delay, isoTime: t });
+          } else {
+            immediate.push(pid); // 過去の時刻は即時投稿
+          }
+        } else {
+          immediate.push(pid);
+        }
+      }
+
+      // Step 3a: 即時投稿
+      if (immediate.length > 0) {
+        // 予約がなければ Supabase ファイルを削除
+        const path = deferred.length === 0 ? supabasePath : "";
+        const immediateSchedules = Object.fromEntries(
+          immediate.flatMap(p => scheduledTimes[p] ? [[p, scheduledTimes[p]!]] : [])
+        ) as Partial<Record<Platform, string>>;
+        const r = await callPostApi(immediate, publicUrl, path, immediateSchedules);
+        setResults(r);
+      }
+
+      // Step 3b: 予約投稿（setTimeout）
+      if (deferred.length > 0) {
+        setPendingSchedules(deferred.map(d => ({ platform: d.platform, time: d.isoTime })));
+        showToast("予約投稿を設定しました。このタブを閉じないでください。");
+
+        deferred.forEach(({ platform, delay, isoTime }, idx) => {
+          const isLast = idx === deferred.length - 1;
+          setTimeout(async () => {
+            try {
+              const r = await callPostApi(
+                [platform],
+                publicUrl,
+                isLast ? supabasePath : "",
+                { [platform]: isoTime } as Partial<Record<Platform, string>>
+              );
+              setResults(prev => [...prev, ...r]);
+              setPendingSchedules(prev => prev.filter(s => s.platform !== platform));
+              showToast(`${PLATFORMS.find(p => p.id === platform)?.label} への投稿が完了しました`);
+            } catch (e) {
+              setResults(prev => [...prev, {
+                platform,
+                success: false,
+                error: e instanceof Error ? e.message : "予約投稿に失敗",
+              }]);
+              setPendingSchedules(prev => prev.filter(s => s.platform !== platform));
+            }
+          }, delay);
+        });
       }
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : "Unknown error");
@@ -531,6 +603,101 @@ function SnsPosterInner() {
           </p>
         )}
       </section>
+
+      {/* ── 投稿予約 ── */}
+      {selectedPlatforms.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 mb-3">
+            投稿予約 <span className="normal-case font-normal text-gray-300 dark:text-gray-700">（任意）</span>
+          </h2>
+          <div className="flex flex-col gap-2">
+            {selectedPlatforms.map((pid) => {
+              const p = PLATFORMS.find((x) => x.id === pid)!;
+              const val = scheduledTimes[pid] ?? "";
+              const minVal = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+              return (
+                <div
+                  key={pid}
+                  className={`flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-xl border ${p.borderColor} ${p.bgColor}`}
+                >
+                  <div className={`flex items-center gap-2 shrink-0 ${p.color}`}>
+                    {p.icon}
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{p.label}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="datetime-local"
+                      value={val}
+                      min={minVal}
+                      onChange={(e) =>
+                        setScheduledTimes((prev) => ({ ...prev, [pid]: e.target.value }))
+                      }
+                      className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-xs text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-600"
+                    />
+                    {val && (
+                      <button
+                        onClick={() =>
+                          setScheduledTimes((prev) => {
+                            const n = { ...prev };
+                            delete n[pid];
+                            return n;
+                          })
+                        }
+                        className="text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-1.5 py-1 rounded-lg"
+                        title="クリア"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {val && (
+                    <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-1.5 py-0.5 rounded-full shrink-0">
+                      予約
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {selectedPlatforms.some((p) => scheduledTimes[p]) && (
+            <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
+              ⚠ 予約投稿中はこのタブを閉じないでください（YouTube は除く）
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* ── 予約中バッジ ── */}
+      {pendingSchedules.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 mb-3">
+            予約待機中
+          </h2>
+          <div className="flex flex-col gap-2">
+            {pendingSchedules.map(({ platform, time }) => {
+              const p = PLATFORMS.find((x) => x.id === platform)!;
+              return (
+                <div
+                  key={platform}
+                  className={`flex items-center gap-3 p-3 rounded-xl border ${p.borderColor} ${p.bgColor}`}
+                >
+                  <span className={`animate-pulse ${p.color}`}>{p.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{p.label}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {new Date(time).toLocaleString("ja-JP")} に投稿予定
+                    </p>
+                  </div>
+                  <svg className="animate-spin h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── 投稿ボタン ── */}
       <button

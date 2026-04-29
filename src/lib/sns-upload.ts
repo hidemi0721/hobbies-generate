@@ -39,10 +39,12 @@ export async function uploadToYouTube(
     description: string;
     tags?: string[];
     privacy?: "public" | "unlisted" | "private";
+    publishAt?: string; // ISO 8601 — 指定時は予約投稿
   },
   accessToken: string
 ): Promise<PlatformResult> {
   const mimeType = videoBlob.type || "video/mp4";
+  const isScheduled = !!opts.publishAt;
   const metadata = {
     snippet: {
       title: opts.title.slice(0, 100),
@@ -51,8 +53,10 @@ export async function uploadToYouTube(
       categoryId: "22", // People & Blogs
     },
     status: {
-      privacyStatus: opts.privacy ?? "public",
+      // 予約投稿は必ず private + publishAt が必要
+      privacyStatus: isScheduled ? "private" : (opts.privacy ?? "public"),
       selfDeclaredMadeForKids: false,
+      ...(isScheduled ? { publishAt: opts.publishAt } : {}),
     },
   };
 

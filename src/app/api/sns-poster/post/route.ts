@@ -13,14 +13,15 @@ export const maxDuration = 300;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
-      videoUrl: string;       // Supabase 公開 URL
-      supabasePath: string;   // 削除用パス
+      videoUrl: string;
+      supabasePath: string;
       title: string;
       caption: string;
       platforms: string[];
+      scheduledTimes?: Partial<Record<string, string>>; // ISO 8601 per platform
     };
 
-    const { videoUrl, supabasePath, title, caption, platforms } = body;
+    const { videoUrl, supabasePath, title, caption, platforms, scheduledTimes } = body;
 
     if (!videoUrl) {
       return NextResponse.json({ error: "videoUrl が必要です" }, { status: 400 });
@@ -50,7 +51,12 @@ export async function POST(req: NextRequest) {
             const videoBlob = await videoRes.blob();
             return uploadToYouTube(
               videoBlob,
-              { title: title || "新しい動画", description: caption, privacy: "public" },
+              {
+                title: title || "新しい動画",
+                description: caption,
+                privacy: "public",
+                ...(scheduledTimes?.youtube ? { publishAt: scheduledTimes.youtube } : {}),
+              },
               accessToken!
             );
           })()
