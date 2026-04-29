@@ -23,4 +23,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   transition: background-color 0.2s, color 0.2s;
+  overflow-x: hidden;
+}
+
+*, *::before, *::after {
+  max-width: 100%;
+  box-sizing: border-box;
 }

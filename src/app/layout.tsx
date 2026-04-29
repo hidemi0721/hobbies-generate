@@ -25,7 +25,7 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-screen bg-white dark:bg-gray-950">
         <Sidebar />
-        <div className="flex-1 min-w-0 relative flex flex-col min-h-screen">
+        <div className="flex-1 min-w-0 overflow-x-hidden relative flex flex-col min-h-screen">
           <ThemeToggle />
           <div className="flex-1">{children}</div>
           <Footer />
