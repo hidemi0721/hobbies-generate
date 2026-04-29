@@ -103,7 +103,7 @@ export function Sidebar() {
       <button
         onClick={() => setOpen(true)}
         aria-label="メニューを開く"
-        className="lg:hidden fixed top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md dark:border-gray-700 dark:bg-gray-800"
+        className="md:hidden fixed top-4 right-4 z-50 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md dark:border-gray-700 dark:bg-gray-800"
       >
         <svg className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -112,21 +112,21 @@ export function Sidebar() {
 
       {/* ── モバイル オーバーレイ ── */}
       {open && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={close} />
+        <div className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={close} />
       )}
 
       {/* ── サイドバー本体 ── */}
       <aside
         className={`
-          fixed lg:sticky top-0 z-40
+          fixed md:sticky top-0 z-40
           h-screen w-56 shrink-0
           flex flex-col overflow-hidden
           bg-white dark:bg-gray-900
           border-gray-200 dark:border-gray-800
           transition-transform duration-200
-          right-0 lg:left-0 lg:right-auto
-          border-l lg:border-l-0 lg:border-r
-          ${open ? "translate-x-0" : "translate-x-full lg:translate-x-0"}
+          right-0 md:left-0 md:right-auto
+          border-l md:border-l-0 md:border-r
+          ${open ? "translate-x-0" : "translate-x-full md:translate-x-0"}
         `}
       >
         {/* ヘッダー */}
@@ -139,7 +139,7 @@ export function Sidebar() {
           </Link>
           <button
             onClick={close}
-            className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="md:hidden p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -240,7 +240,7 @@ export function Sidebar() {
           <button
             onClick={toggleTheme}
             aria-label="テーマ切り替え"
-            className="lg:hidden flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors w-full"
+            className="md:hidden flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors w-full"
           >
             {dark ? (
               <svg className="h-5 w-5 text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

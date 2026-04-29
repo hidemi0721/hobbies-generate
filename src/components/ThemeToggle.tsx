@@ -29,7 +29,7 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label="テーマ切り替え"
-      className="hidden lg:flex fixed top-4 right-4 z-50 h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md transition-all hover:scale-110 dark:border-gray-700 dark:bg-gray-800"
+      className="hidden md:flex fixed top-4 right-4 z-50 h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md transition-all hover:scale-110 dark:border-gray-700 dark:bg-gray-800"
     >
       {dark ? (
         /* Sun */

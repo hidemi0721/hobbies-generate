@@ -19,7 +19,10 @@ const TOOLS = [
   { id: "concept-art", label: "Concept Art", emoji: "🎨" },
   { id: "pose",        label: "Pose",        emoji: "🕺" },
   { id: "music",       label: "Music",       emoji: "🎵" },
+  { id: "video",       label: "Video",       emoji: "🎬" },
 ];
+
+const isVideo = (item: LibraryItem) => item.tool === "video";
 
 function fmt(d: string) {
   return new Date(d).toLocaleString("ja-JP", {
@@ -126,7 +129,13 @@ export default function LibraryPage() {
                 onClick={() => setSelected(item)}
                 className="group relative aspect-square rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-800 shadow-sm hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                {item.image_url ? (
+                {isVideo(item) ? (
+                  <video
+                    src={item.image_url}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    muted playsInline preload="metadata"
+                  />
+                ) : item.image_url ? (
                   <Image
                     src={item.image_url}
                     alt={item.title}
@@ -172,16 +181,27 @@ export default function LibraryPage() {
               </svg>
             </button>
 
-            {/* メイン画像 */}
+            {/* メイン画像 / 動画 */}
             {selected.image_url && (
-              <div className="relative w-full aspect-square rounded-t-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
-                <Image
-                  src={selected.image_url}
-                  alt={selected.title}
-                  fill
-                  sizes="(max-width: 672px) 100vw, 672px"
-                  className="object-contain"
-                />
+              <div className="relative w-full rounded-t-2xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                {isVideo(selected) ? (
+                  <video
+                    src={selected.image_url}
+                    controls
+                    playsInline
+                    className="w-full max-h-96 object-contain"
+                  />
+                ) : (
+                  <div className="aspect-square">
+                    <Image
+                      src={selected.image_url}
+                      alt={selected.title}
+                      fill
+                      sizes="(max-width: 672px) 100vw, 672px"
+                      className="object-contain"
+                    />
+                  </div>
+                )}
               </div>
             )}
 

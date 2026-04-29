@@ -284,6 +284,18 @@ function SnsPosterInner() {
       localStorage.setItem("sns_saved_videos", JSON.stringify(next));
       return next;
     });
+    // Library にも保存
+    fetch("/api/library/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tool: "video",
+        title: video.name,
+        imageUrl: video.url,
+        extraUrls: [],
+        metadata: { savedAt: video.savedAt },
+      }),
+    }).catch(() => {});
   }, []);
 
   const deleteFromSavedVideos = useCallback(async (video: SavedVideo) => {
