@@ -345,14 +345,14 @@ function SnsPosterInner() {
       const supabasePath = urlData.path!;
 
       // 即時投稿 / 予約投稿 を振り分け
-      // Instagram はネイティブ予約（API 側で処理）のため即時グループへ
-      // TikTok のみ setTimeout でクライアント予約
+      // YouTube は API ネイティブ予約のため即時グループへ
+      // Instagram・TikTok は setTimeout でクライアント予約
       const immediate: Platform[] = [];
       const deferred: { platform: Platform; delay: number; isoTime: string }[] = [];
 
       for (const pid of selectedPlatforms) {
         const t = scheduledTimes[pid];
-        if (t && pid === "tiktok") {
+        if (t && pid !== "youtube") {
           const delay = new Date(t).getTime() - now;
           if (delay > 0) {
             deferred.push({ platform: pid, delay, isoTime: t });
@@ -360,7 +360,7 @@ function SnsPosterInner() {
             immediate.push(pid);
           }
         } else {
-          immediate.push(pid); // YouTube・Instagram は即時グループ（予約時間はAPIに渡す）
+          immediate.push(pid); // YouTube は即時グループ（publishAt はAPIに渡す）
         }
       }
 
@@ -720,7 +720,7 @@ function SnsPosterInner() {
           </div>
           {selectedPlatforms.some((p) => scheduledTimes[p]) && (
             <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">
-              ⚠ TikTok の予約投稿はタブを閉じないでください。YouTube・Instagram はタブを閉じても予約されます。
+              ⚠ Instagram・TikTok の予約投稿はタブを閉じないでください。YouTube はタブを閉じても予約されます。
             </p>
           )}
         </section>
