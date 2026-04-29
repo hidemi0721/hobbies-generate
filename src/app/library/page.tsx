@@ -19,7 +19,6 @@ const TOOLS = [
   { id: "concept-art", label: "Concept Art", emoji: "🎨" },
   { id: "pose",        label: "Pose",        emoji: "🕺" },
   { id: "music",       label: "Music",       emoji: "🎵" },
-  { id: "video",       label: "Video",       emoji: "🎬" },
 ];
 
 const isVideo = (item: LibraryItem) => item.tool === "video";

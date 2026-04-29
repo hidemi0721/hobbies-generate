@@ -433,37 +433,14 @@ function SnsPosterInner() {
         publicUrl = urlData.publicUrl!;
         supabasePath = urlData.path!;
 
-        // アップロード完了直後に保存履歴・Library へ登録
-        const savedAt = new Date().toISOString();
+        // アップロード完了直後に保存履歴へ登録
         addToSavedVideos({
           id: crypto.randomUUID(),
           name: videoName,
           url: publicUrl,
           path: supabasePath,
-          savedAt,
+          savedAt: new Date().toISOString(),
         });
-
-        // Library にも保存（sns-temp → library バケットへコピー）
-        try {
-          const libRes = await fetch("/api/library/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tool: "video",
-              title: videoName.replace(/\.[^.]+$/, ""),
-              imageUrl: publicUrl,
-              extraUrls: [],
-              metadata: { savedAt },
-              uploadVideo: true,
-            }),
-          });
-          if (!libRes.ok) {
-            const err = await libRes.json().catch(() => ({})) as { error?: string };
-            showToast(`ライブラリ保存失敗: ${err.error ?? libRes.status}`, true);
-          }
-        } catch (e) {
-          showToast(`ライブラリ保存エラー: ${e instanceof Error ? e.message : e}`, true);
-        }
       }
 
       const now = Date.now();
