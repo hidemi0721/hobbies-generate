@@ -1,15 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-    setMounted(true);
-  }, []);
+  const [dark, setDark] = useState(() => {
+    if (typeof document === "undefined") return false;
+    return document.documentElement.classList.contains("dark");
+  });
 
   const toggle = () => {
     const next = !dark;
@@ -23,7 +20,8 @@ export function ThemeToggle() {
     }
   };
 
-  if (!mounted) return null;
+  // Avoid rendering on the server to prevent hydration mismatch.
+  if (typeof document === "undefined") return null;
 
   return (
     <button

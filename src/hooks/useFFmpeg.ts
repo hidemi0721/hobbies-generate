@@ -12,6 +12,7 @@ export function useFFmpeg() {
   const ffmpegRef = useRef<FFmpeg | null>(null);
   const [status,         setStatus]         = useState<FFmpegStatus>("idle");
   const [encodeProgress, setEncodeProgress] = useState(0);
+  const [ffmpeg,         setFfmpeg]         = useState<FFmpeg | null>(null);
 
   const load = useCallback(async (): Promise<FFmpeg> => {
     if (ffmpegRef.current) return ffmpegRef.current;
@@ -23,17 +24,19 @@ export function useFFmpeg() {
         wasmURL: await toBlobURL(`${CDN}/ffmpeg-core.wasm`, "application/wasm"),
       });
       ffmpegRef.current = ffmpeg;
+      setFfmpeg(ffmpeg);
       setStatus("ready");
       return ffmpeg;
     } catch (e) {
       console.error("[useFFmpeg] load failed:", e);
+      setFfmpeg(null);
       setStatus("error");
       throw e;
     }
   }, []);
 
   return {
-    ffmpeg:  ffmpegRef.current,
+    ffmpeg,
     status,
     encodeProgress,
     setEncodeProgress,

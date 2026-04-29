@@ -76,28 +76,28 @@ function buildPrompt(s: DnaState): string {
 
 // ─── DNA Builder コンポーネント ────────────────────
 function SunoPromptBuilder({ onPromptChange }: { onPromptChange: (p: string) => void }) {
-  const [dna,           setDna]           = useState<DnaState | null>(null);
+  const [dna,           setDna]           = useState<DnaState | null>(() => {
+    // Load once on first render (avoids setState inside an effect).
+    if (typeof window === "undefined") return initDna("dynamic");
+    try {
+      const raw = window.localStorage.getItem(DNA_LS_KEY);
+      if (!raw) return initDna("dynamic");
+
+      const parsed = JSON.parse(raw) as DnaState;
+      if (!parsed.priority) {
+        parsed.priority = {
+          dynamic: makeTags(MODE_PRIORITY.dynamic, true),
+          static:  makeTags(MODE_PRIORITY.static, true),
+        };
+      }
+      return parsed;
+    } catch {
+      return initDna("dynamic");
+    }
+  });
   const [inputs,        setInputs]        = useState<Record<DnaCatKey, string>>({ genre:"", inst:"", atm:"", rhythm:"" });
   const [priorityInput, setPriorityInput] = useState("");
   const [copied,        setCopied]        = useState(false);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(DNA_LS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as DnaState;
-        if (!parsed.priority) {
-          parsed.priority = {
-            dynamic: makeTags(MODE_PRIORITY.dynamic, true),
-            static:  makeTags(MODE_PRIORITY.static, true),
-          };
-        }
-        setDna(parsed);
-      } else {
-        setDna(initDna("dynamic"));
-      }
-    } catch { setDna(initDna("dynamic")); }
-  }, []);
 
   useEffect(() => {
     if (!dna) return;
